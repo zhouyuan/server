@@ -72,12 +72,12 @@ enum wsrep_trx_status {
 };
 #endif
 struct xid_t;
-struct wsrep;
+struct wsrep_st;
 struct wsrep_ws_handle;
 struct wsrep_buf;
 
 extern struct wsrep_service_st {
-  struct wsrep *              (*get_wsrep_func)();
+  struct wsrep_st *           (*get_wsrep_func)();
   my_bool                     (*get_wsrep_certify_nonPK_func)();
   my_bool                     (*get_wsrep_debug_func)();
   my_bool                     (*get_wsrep_drupal_282555_workaround_func)();
@@ -217,7 +217,7 @@ my_bool wsrep_aborting_thd_contains(THD *thd);
 //my_bool wsrep_thd_is_BF(MYSQL_THD thd, my_bool sync);
 my_bool wsrep_thd_is_BF(void* thd, my_bool sync);
 my_bool wsrep_thd_is_wsrep(MYSQL_THD thd);
-struct wsrep *get_wsrep();
+struct wsrep_st *get_wsrep();
 struct wsrep_ws_handle *wsrep_thd_ws_handle(THD *thd);
 void wsrep_aborting_thd_enqueue(THD *thd);
 void wsrep_post_commit(THD* thd, bool all);

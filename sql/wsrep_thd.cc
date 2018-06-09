@@ -122,11 +122,13 @@ void wsrep_post_rollback(THD *thd)
       void* ptr= NULL;
       size_t len= 0;
       wsrep_buf_t err= {ptr, len};
-      if (wsrep->commit_order_enter(wsrep, &thd->wsrep_ws_handle))
+      if (wsrep->commit_order_enter(wsrep, &thd->wsrep_ws_handle,
+                                    &thd->wsrep_trx_meta))
       {
         WSREP_WARN("wsrep_post_rollback: failed to enter commit order");
       }
-      if (wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle, &err))
+      if (wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle,
+                                    &thd->wsrep_trx_meta, &err))
       {
         WSREP_WARN("wsrep_post_rollback: failed to leave commit order");
       }

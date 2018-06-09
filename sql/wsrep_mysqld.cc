@@ -739,8 +739,9 @@ void wsrep_verify_SE_checkpoint(const wsrep_uuid_t& uuid,
 }
 
 static wsrep_cb_status_t
-wsrep_sst_request_cb (void**                   sst_req,
-                      size_t*                  sst_req_len)
+wsrep_sst_request_cb (void*   app_ctx,
+                      void**  sst_req,
+                      size_t* sst_req_len)
 {
   *sst_req     = NULL;
   *sst_req_len = 0;
@@ -3912,7 +3913,8 @@ int wsrep_ordered_commit_if_no_binlog(THD* thd)
   {
     wsrep_buf_t const err= { NULL, 0 };
     wsrep_status_t rcode=
-      wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle, &err);
+      wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle,
+                                &thd->wsrep_trx_meta, &err);
     if (rcode != WSREP_OK)
     {
       DBUG_ASSERT(rcode == WSREP_NODE_FAIL);

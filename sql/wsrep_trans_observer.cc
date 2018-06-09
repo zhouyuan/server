@@ -558,14 +558,16 @@ static wsrep_trx_status wsrep_replicate_fragment(THD *thd)
     }
     else
     {
-      rcode= wsrep->commit_order_enter(wsrep, &thd->wsrep_ws_handle);
+      rcode= wsrep->commit_order_enter(wsrep, &thd->wsrep_ws_handle,
+                                       &thd->wsrep_trx_meta);
       if (rcode == WSREP_OK)
       {
         wsrep_xid_init(&SR_thd->wsrep_xid, thd->wsrep_trx_meta.gtid.uuid,
                        thd->wsrep_trx_meta.gtid.seqno);
         wsrep_SR_store->update_frag_seqno(SR_thd, thd);
         frag_updated= true;
-        rcode= wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle, NULL);
+        rcode= wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle,
+                                         &thd->wsrep_trx_meta, NULL);
         if (rcode != WSREP_OK && rcode != WSREP_BF_ABORT)
         {
           WSREP_ERROR("wsrep_replicate_fragment(%lu): seqno %lld, trx %ld "
@@ -773,13 +775,15 @@ bool wsrep_replicate_GTID(THD *thd)
     if (rcode)
     {
       WSREP_INFO("GTID replication failed: %d", rcode);
-      if (wsrep->commit_order_enter(wsrep, &thd->wsrep_ws_handle))
+      if (wsrep->commit_order_enter(wsrep, &thd->wsrep_ws_handle,
+                                    &thd->wsrep_trx_meta))
       {
           WSREP_ERROR("wsrep::commit_order_enter fail: %llu %d",
                       (long long)thd->thread_id, thd->get_stmt_da()->status());
       }
 
-      if (wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle, NULL))
+      if (wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle,
+                                    &thd->wsrep_trx_meta, NULL))
       {
           WSREP_ERROR("wsrep::commit_order_leave fail: %llu %d",
                       (long long)thd->thread_id, thd->get_stmt_da()->status());
@@ -1039,7 +1043,8 @@ int wsrep_before_commit(THD* thd, bool all)
     if (is_real_trans)
     {
       DBUG_ASSERT(thd->wsrep_trx_must_order_commit());
-      if (wsrep->commit_order_enter(wsrep, &thd->wsrep_ws_handle) != WSREP_OK)
+      if (wsrep->commit_order_enter(wsrep, &thd->wsrep_ws_handle,
+                                    &thd->wsrep_trx_meta) != WSREP_OK)
       {
         WSREP_ERROR("Failed to enter applier commit order critical section");
         DBUG_RETURN(1);
@@ -1103,7 +1108,8 @@ int wsrep_before_commit(THD* thd, bool all)
       DBUG_ASSERT(thd->wsrep_conflict_state() == NO_CONFLICT);
       mysql_mutex_unlock(&thd->LOCK_wsrep_thd);
       wsrep_status_t rcode= wsrep->commit_order_enter(wsrep,
-                                                      &thd->wsrep_ws_handle);
+                                                      &thd->wsrep_ws_handle,
+                                                      &thd->wsrep_trx_meta);
       mysql_mutex_lock(&thd->LOCK_wsrep_thd);
       switch (rcode)
       {
@@ -1164,7 +1170,8 @@ int wsrep_ordered_commit(THD* thd, bool all, const wsrep_apply_error& err)
       {
         wsrep_buf_t const err_buf= err.get_buf();
         wsrep_status_t const rcode=
-          wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle, &err_buf);
+          wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle,
+                                    &thd->wsrep_trx_meta, &err_buf);
 
         if (rcode != WSREP_OK)
         {
@@ -1210,7 +1217,8 @@ int wsrep_ordered_commit(THD* thd, bool all, const wsrep_apply_error& err)
     thd->wsrep_SR_fragments.clear();
     mysql_mutex_unlock(&thd->LOCK_wsrep_thd);
     if (wsrep_thd_trx_seqno(thd) != WSREP_SEQNO_UNDEFINED &&
-        wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle, NULL))
+        wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle,
+                                  &thd->wsrep_trx_meta, NULL))
     {
       WSREP_ERROR("wsrep::commit_order_leave fail: %llu %d",
                   (long long)thd->thread_id, thd->get_stmt_da()->status());
@@ -1260,7 +1268,8 @@ int wsrep_after_commit(THD* thd, bool all)
       thd->wsrep_SR_fragments.clear();
       mysql_mutex_unlock(&thd->LOCK_wsrep_thd);
       if (wsrep_thd_trx_seqno(thd) != WSREP_SEQNO_UNDEFINED &&
-          wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle, NULL))
+          wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle,
+                                    &thd->wsrep_trx_meta, NULL))
       {
         WSREP_ERROR("wsrep::commit_order_leave fail: %llu %d",
                     (long long)thd->thread_id, thd->get_stmt_da()->status());
@@ -1606,7 +1615,8 @@ int wsrep_before_GTID_binlog(THD* thd, bool all)
 
   wsrep_status_t rcode;
   if (!ret &&
-      (rcode = wsrep->commit_order_enter(wsrep, &thd->wsrep_ws_handle)))
+      (rcode = wsrep->commit_order_enter(wsrep, &thd->wsrep_ws_handle,
+                                         &thd->wsrep_trx_meta)))
   {
     WSREP_ERROR("wsrep::commit_order_enter fail: %llu %d",
                 (long long)thd->thread_id, rcode);
@@ -1614,7 +1624,8 @@ int wsrep_before_GTID_binlog(THD* thd, bool all)
   }
 
   if (!ret &&
-      (rcode = wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle, NULL)))
+      (rcode = wsrep->commit_order_leave(wsrep, &thd->wsrep_ws_handle,
+                                         &thd->wsrep_trx_meta, NULL)))
   {
     WSREP_ERROR("wsrep::commit_order_leave fail: %llu %d",
                 (long long)thd->thread_id, rcode);

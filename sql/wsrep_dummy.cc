@@ -46,7 +46,7 @@ bool wsrep_prepare_key_for_innodb(THD* thd, const uchar*, size_t, const uchar*, 
 bool wsrep_prepare_key(const uchar*, size_t, const uchar*, size_t, struct wsrep_buf*, size_t*)
 { return 0; }
 
-struct wsrep *get_wsrep()
+struct wsrep_st *get_wsrep()
 { return 0; }
 
 my_bool get_wsrep_certify_nonPK()
