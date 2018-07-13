@@ -883,14 +883,27 @@ table_def::compatible_with(THD *thd, rpl_group_info *rgi,
       const char *tbl_name= table->s->table_name.str;
       char source_buf[MAX_FIELD_WIDTH];
       char target_buf[MAX_FIELD_WIDTH];
+      enum loglevel report_level= INFORMATION_LEVEL;
+
       String source_type(source_buf, sizeof(source_buf), &my_charset_latin1);
       String target_type(target_buf, sizeof(target_buf), &my_charset_latin1);
       show_sql_type(type(col), field_metadata(col), &source_type, field->charset());
       field->sql_type(target_type);
-      rli->report(ERROR_LEVEL, ER_SLAVE_CONVERSION_FAILED, rgi->gtid_info(),
-                  ER(ER_SLAVE_CONVERSION_FAILED),
-                  col, db_name, tbl_name,
-                  source_type.c_ptr_safe(), target_type.c_ptr_safe());
+#if defined(MYSQL_SERVER) && defined(HAVE_REPLICATION)
+      if (!ignored_error_code(ER_SLAVE_CONVERSION_FAILED))
+      {
+        report_level= ERROR_LEVEL;
+        thd->is_slave_error= 1;
+      }
+      else if (global_system_variables.log_warnings > 1)
+        report_level= WARNING_LEVEL;
+
+      if (report_level != INFORMATION_LEVEL)
+        rli->report(ERROR_LEVEL, ER_SLAVE_CONVERSION_FAILED, rgi->gtid_info(),
+                    ER(ER_SLAVE_CONVERSION_FAILED),
+                    col, db_name, tbl_name,
+                    source_type.c_ptr_safe(), target_type.c_ptr_safe());
+#endif
       return false;
     }
   }
@@ -1031,10 +1044,22 @@ TABLE *table_def::create_conversion_table(THD *thd, rpl_group_info *rgi,
 
 err:
   if (conv_table == NULL)
-    rli->report(ERROR_LEVEL, ER_SLAVE_CANT_CREATE_CONVERSION, rgi->gtid_info(),
-                ER(ER_SLAVE_CANT_CREATE_CONVERSION),
-                target_table->s->db.str,
-                target_table->s->table_name.str);
+  {
+    enum loglevel report_level= INFORMATION_LEVEL;
+    if (!ignored_error_code(ER_SLAVE_CANT_CREATE_CONVERSION))
+    {
+      report_level= ERROR_LEVEL;
+      thd->is_slave_error= 1;
+    }
+    else if (global_system_variables.log_warnings > 1)
+      report_level= WARNING_LEVEL;
+
+    if (report_level != INFORMATION_LEVEL)
+      rli->report(ERROR_LEVEL, ER_SLAVE_CANT_CREATE_CONVERSION, rgi->gtid_info(),
+                  ER(ER_SLAVE_CANT_CREATE_CONVERSION),
+                  target_table->s->db.str,
+                  target_table->s->table_name.str);
+  }
   DBUG_RETURN(conv_table);
 }
 #endif /* MYSQL_CLIENT */

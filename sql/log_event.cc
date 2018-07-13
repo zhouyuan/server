@@ -243,19 +243,21 @@ static void inline slave_rows_error_report(enum loglevel level, int ha_error,
                      err->get_sql_errno());
   }
 
+  const char *db_name=    table? table->s->db.str : "<unknown>";
+  const char *table_name= table? table->s->table_name.str : "<unknown>";
   if (ha_error != 0)
     rli->report(level, errcode, rgi->gtid_info(),
                 "Could not execute %s event on table %s.%s;"
                 "%s handler error %s; "
                 "the event's master log %s, end_log_pos %lu",
-                type, table->s->db.str, table->s->table_name.str,
+                type, db_name, table_name,
                 buff, handler_error == NULL ? "<unknown>" : handler_error,
                 log_name, pos);
   else
     rli->report(level, errcode, rgi->gtid_info(),
                 "Could not execute %s event on table %s.%s;"
                 "%s the event's master log %s, end_log_pos %lu",
-                type, table->s->db.str, table->s->table_name.str,
+                type, db_name, table_name,
                 buff, log_name, pos);
 }
 #endif
@@ -421,7 +423,7 @@ inline int idempotent_error_code(int err_code)
   Ignore error code specified on command line.
 */
 
-inline int ignored_error_code(int err_code)
+int ignored_error_code(int err_code)
 {
 #ifdef HAVE_NDB_BINLOG
   /*
@@ -9728,7 +9730,7 @@ static void restore_empty_query_table_list(LEX *lex)
 int Rows_log_event::do_apply_event(rpl_group_info *rgi)
 {
   Relay_log_info const *rli= rgi->rli;
-  TABLE* table;
+  TABLE* table= NULL;
   DBUG_ENTER("Rows_log_event::do_apply_event(Relay_log_info*)");
   int error= 0;
   /*
@@ -9836,17 +9838,23 @@ int Rows_log_event::do_apply_event(rpl_group_info *rgi)
       if ((thd->is_slave_error || thd->is_fatal_error) &&
           !is_parallel_retry_error(rgi, actual_error))
       {
-        /*
-          Error reporting borrowed from Query_log_event with many excessive
-          simplifications. 
-          We should not honour --slave-skip-errors at this point as we are
-          having severe errors which should not be skiped.
-        */
-        rli->report(ERROR_LEVEL, actual_error, rgi->gtid_info(),
-                    "Error executing row event: '%s'",
-                    (actual_error ? thd->get_stmt_da()->message() :
-                     "unexpected success or fatal error"));
-        thd->is_slave_error= 1;
+        if (ignored_error_code(actual_error))
+        {
+          if (global_system_variables.log_warnings > 1)
+            rli->report(WARNING_LEVEL, actual_error,
+                        "Error executing row event: '%s'",
+                        (actual_error ? thd->get_stmt_da()->message() :
+                         "unexpected success or fatal error"));
+          goto end;
+        }
+        else
+        {
+          rli->report(ERROR_LEVEL, actual_error, rgi->gtid_info(),
+                      "Error executing row event: '%s'",
+                      (actual_error ? thd->get_stmt_da()->message() :
+                       "unexpected success or fatal error"));
+          thd->is_slave_error= 1;
+        }
       }
       /* remove trigger's tables */
       error= actual_error;
@@ -9912,14 +9920,15 @@ int Rows_log_event::do_apply_event(rpl_group_info *rgi)
           DBUG_PRINT("debug", ("Table: %s.%s is not compatible with master",
                                ptr->table->s->db.str,
                                ptr->table->s->table_name.str));
-          /*
-            We should not honour --slave-skip-errors at this point as we are
-            having severe errors which should not be skiped.
-          */
-          thd->is_slave_error= 1;
-          /* remove trigger's tables */
-          error= ERR_BAD_TABLE_DEF;
-          goto err;
+          if (thd->is_slave_error)
+          {
+            error= ERR_BAD_TABLE_DEF;
+            goto err;
+          }
+          else
+          {
+            goto end;
+          }
         }
         DBUG_PRINT("debug", ("Table: %s.%s is compatible with master"
                              " - conv_table: %p",
@@ -10152,6 +10161,10 @@ int Rows_log_event::do_apply_event(rpl_group_info *rgi)
     goto err;
   }
 
+end:
+  thd->get_stmt_da()->opt_clear_warning_info(thd->query_id);
+  clear_all_errors(thd, const_cast<Relay_log_info*>(rli));
+  error= 0;
   /* remove trigger's tables */
   if (slave_run_triggers_for_rbr)
     restore_empty_query_table_list(thd->lex);
@@ -10200,6 +10213,11 @@ static int rows_event_stmt_cleanup(rpl_group_info *rgi, THD * thd)
   int error;
   DBUG_ENTER("rows_event_stmt_cleanup");
 
+  DBUG_EXECUTE_IF("simulate_rows_event_cleanup_failure",
+                  {
+                    my_error(ER_ERROR_DURING_COMMIT, MYF(0), 1);
+                    DBUG_RETURN(1);
+                  });
   {
     /*
       This is the end of a statement or transaction, so close (and

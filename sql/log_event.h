@@ -4872,6 +4872,10 @@ bool event_that_should_be_ignored(const char *buf);
 uint8 get_checksum_alg(const char* buf, ulong len);
 extern TYPELIB binlog_checksum_typelib;
 
+#if defined(HAVE_REPLICATION) && !defined(MYSQL_CLIENT)
+int ignored_error_code(int err_code);
+#endif
+
 /**
   @} (end of group Replication)
 */
