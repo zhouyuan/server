@@ -4065,6 +4065,9 @@ fts_query(
 			        fts_result_cache_limit = 2048;
 		);
 
+		fprintf(stderr, "size of fts result_cache_limit %ld\n",
+			sizeof(fts_result_cache_limit));
+
 		/* Traverse the Abstract Syntax Tree (AST) and execute
 		the query. */
 		query.error = fts_ast_visit(
