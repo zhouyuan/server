@@ -2762,9 +2762,23 @@ void free_table_map_log_event(Table_map_log_event *event)
   delete event;
 }
 
+/**
+  Encode the event, optionally per 'do_print_encoded' arg store the
+  result into the argument cache; optionally per event_info's
+  'verbose' print into the cache a verbose representation of the event.
+  Note, no extra wrapping is done to the being io-cached data, like
+  to producing a BINLOG query. It's left for a routine that extracts from
+  the cache.
+
+  @param file               pointer to IO_CACHE
+  @param print_event_info   pointer to print_event_info specializing
+                            what out of and how to print the event
+  @param do_print_encoded   whether to store base64-encoded event
+                            into @file.
+*/
 void Log_event::print_base64(IO_CACHE* file,
                              PRINT_EVENT_INFO* print_event_info,
-                             bool more)
+                             bool do_print_encoded)
 {
   const uchar *ptr= (const uchar *)temp_buf;
   uint32 size= uint4korr(ptr + EVENT_LEN_OFFSET);
@@ -2783,17 +2797,9 @@ void Log_event::print_base64(IO_CACHE* file,
     DBUG_ASSERT(0);
   }
 
-  if (print_event_info->base64_output_mode != BASE64_OUTPUT_DECODE_ROWS)
-  {
-    if (my_b_tell(file) == 0)
-      my_b_write_string(file, "\nBINLOG '\n");
-
+  if (do_print_encoded)
     my_b_printf(file, "%s\n", tmp_str);
 
-    if (!more)
-      my_b_printf(file, "'%s\n", print_event_info->delimiter);
-  }
-  
   if (print_event_info->verbose)
   {
     Rows_log_event *ev= NULL;
@@ -4833,9 +4839,17 @@ void Start_log_event_v3::print(FILE* file, PRINT_EVENT_INFO* print_event_info)
       print_event_info->base64_output_mode != BASE64_OUTPUT_NEVER &&
       !print_event_info->short_form)
   {
-    if (print_event_info->base64_output_mode != BASE64_OUTPUT_DECODE_ROWS)
+    /* BINLOG is matched with the delimiter below on the same level */
+    bool do_print_encoded=
+      print_event_info->base64_output_mode != BASE64_OUTPUT_DECODE_ROWS;
+    if (do_print_encoded)
       my_b_printf(&cache, "BINLOG '\n");
-    print_base64(&cache, print_event_info, FALSE);
+
+    print_base64(&cache, print_event_info, do_print_encoded);
+
+    if (do_print_encoded)
+      my_b_printf(&cache, "'%s\n", print_event_info->delimiter);
+
     print_event_info->printed_fd_event= TRUE;
   }
   DBUG_VOID_RETURN;
@@ -10474,12 +10488,151 @@ void Rows_log_event::pack_info(Protocol *protocol)
 #endif
 
 #ifdef MYSQL_CLIENT
+/**
+  Print an event "body" cache to @c file possibly in multiple fragements.
+  Each fragement is optionally per @c do_wrap to procude an SQL statement.
+
+  @param file      a file to print to
+  @param body      the "body" IO_CACHE of event
+  @param do_wrap   whether to wrap base64-encoded strings with
+                   SQL cover.
+  The function signals on any error through setting @c body->error to -1.
+*/
+void copy_cache_to_file_wrapped(FILE *file,
+                                IO_CACHE *body,
+                                bool do_wrap,
+                                const char *delimiter)
+{
+  uint n_frag= 1;
+  const char* before_frag= NULL;
+  char* after_frag= NULL;
+  char* after_last= NULL;
+  /*
+    2 fragments can always represent near 1GB row-based
+    base64-encoded event as two strings each of size less than
+    max(max_allowed_packet).  Greater number of fragments does not
+    save from potential need to tweak (increase) @@max_allowed_packet
+    before to process the fragments. So 2 is safe and enough.
+  */
+  const char fmt_last_frag2[]=
+    "\nBINLOG @binlog_fragment_0, @binlog_fragment_1%s\n";
+  const char fmt_before_frag[]= "\nSET /* ONE_SHOT */ @binlog_fragment_%d ='\n";
+  /*
+    Buffer to hold computed formatted strings according to specifiers.
+    The sizes may depend on an actual fragment number size in terms of decimal
+    signs so its maximum is estimated (not precisely yet safely) below.
+  */
+  char buf[sizeof(fmt_before_frag) + sizeof(fmt_last_frag2)
+           + ((sizeof(n_frag) * 8)/3 + 1)                // max of decimal index
+           + sizeof(PRINT_EVENT_INFO::max_delimiter_len) + 3]; // delim, \n and 0
+
+  if (do_wrap)
+  {
+    after_frag= (char*) my_malloc(sizeof(buf), MYF(MY_WME));
+    sprintf(after_frag, "'%s\n", delimiter);
+    if (my_b_tell(body) > opt_binlog_rows_event_max_encoded_size)
+      n_frag= 2;
+    if (n_frag > 1)
+    {
+      before_frag= fmt_before_frag;
+      after_last= (char*) my_malloc(sizeof(buf), MYF(MY_WME));
+      sprintf(after_last, fmt_last_frag2, (char*) delimiter);
+    }
+    else
+    {
+      before_frag= "\nBINLOG '\n"; // single "fragment"
+    }
+  }
+
+  size_t total_size= my_b_tell(body), total_written= 0;
+  size_t frag_size= total_size / n_frag + 1, curr_size;
+
+  if (reinit_io_cache(body, READ_CACHE, 0L, FALSE, FALSE))
+  {
+    body->error= -1;
+    goto err;
+  }
+
+  for (uint i= 0; i < n_frag; i++, total_written += curr_size)
+  {
+    curr_size= i < n_frag - 1 ? frag_size : total_size - total_written;
+
+    DBUG_ASSERT(i < n_frag - 1 || curr_size <= frag_size);
+
+    if (before_frag)
+    {
+      sprintf(buf, before_frag, i);
+      my_fwrite(file, (uchar*) buf, strlen(buf), MYF(MY_WME | MY_NABP));
+    }
+    if (my_b_copy_to_file(body, file, FALSE, curr_size))
+    {
+      body->error= -1;
+      goto err;
+    }
+    if (after_frag)
+    {
+      sprintf(buf, after_frag, NULL);
+      my_fwrite(file, (uchar*) buf, strlen(buf), MYF(MY_WME | MY_NABP));
+    }
+  }
+
+  if (after_last)
+  {
+    sprintf(buf, after_last, n_frag);
+    my_fwrite(file, (uchar*) buf, strlen(buf), MYF(MY_WME | MY_NABP));
+  }
+  reinit_io_cache(body, WRITE_CACHE, 0, FALSE, TRUE);
+
+err:
+  my_free(after_frag);
+  my_free(after_last);
+}
+
+/**
+  The function invokes base64 encoder to run on the current
+  event string and store the result into two caches.
+  When the event ends the current statement the caches are is copied into
+  the argument file.
+  Copying is also concerned how to wrap the event, specifically to produce
+  a valid SQL syntax.
+  When the encoded data size is within max(MAX_ALLOWED_PACKET)
+  a regular BINLOG query is composed. Otherwise it is build as fragmented
+
+    SET @binlog_fragment_0='...';
+    SET @binlog_fragment_1='...';
+    BINLOG DEFRAGMENT(@binlog_fragment_0, @binlog_fragment_1);
+
+  where fragments are represented by a sequence of "indexed" user
+  variables.
+  Two more statements are composed as well
+
+    SET @binlog_fragment_0=NULL;
+    SET @binlog_fragment_1=NULL;
+
+  to promptly release memory.
+
+  NOTE.
+  If any changes made don't forget to duplicate them to
+  Old_rows_log_event as long as it's supported.
+
+  @param file               pointer to IO_CACHE
+  @param print_event_info   pointer to print_event_info specializing
+                            what out of and how to print the event
+  @param name               the name of a table that the event operates on
+
+  The function signals on any error of cache access through setting
+  that cache's @c error to -1.
+*/
 void Rows_log_event::print_helper(FILE *file,
                                   PRINT_EVENT_INFO *print_event_info,
                                   char const *const name)
 {
   IO_CACHE *const head= &print_event_info->head_cache;
   IO_CACHE *const body= &print_event_info->body_cache;
+  bool do_print_encoded=
+    print_event_info->base64_output_mode != BASE64_OUTPUT_DECODE_ROWS &&
+    !print_event_info->short_form;
+
   if (!print_event_info->short_form)
   {
     bool const last_stmt_event= get_flags(STMT_END_F);
@@ -10487,13 +10640,18 @@ void Rows_log_event::print_helper(FILE *file,
     my_b_printf(head, "\t%s: table id %lu%s\n",
                 name, m_table_id,
                 last_stmt_event ? " flags: STMT_END_F" : "");
-    print_base64(body, print_event_info, !last_stmt_event);
+    print_base64(body, print_event_info, do_print_encoded);
   }
 
   if (get_flags(STMT_END_F))
   {
-    copy_event_cache_to_file_and_reinit(head, file);
-    copy_event_cache_to_file_and_reinit(body, file);
+    if (copy_event_cache_to_file_and_reinit(head, file))
+    {
+      head->error= -1;
+      return;
+    }
+    copy_cache_to_file_wrapped(file, body, do_print_encoded,
+                               print_event_info->delimiter);
   }
 }
 #endif
@@ -11352,7 +11510,9 @@ void Table_map_log_event::print(FILE *file, PRINT_EVENT_INFO *print_event_info)
                 m_dbnam, m_tblnam, m_table_id,
                 ((m_flags & TM_BIT_HAS_TRIGGERS_F) ?
                  " (has triggers)" : ""));
-    print_base64(&print_event_info->body_cache, print_event_info, TRUE);
+    print_base64(&print_event_info->body_cache, print_event_info,
+                 print_event_info->base64_output_mode !=
+                 BASE64_OUTPUT_DECODE_ROWS);
     copy_event_cache_to_file_and_reinit(&print_event_info->head_cache, file);
   }
 }
