@@ -175,6 +175,7 @@ typedef struct xb_filter_entry_struct	xb_filter_entry_t;
 lsn_t checkpoint_lsn_start;
 lsn_t checkpoint_no_start;
 static lsn_t log_copy_scanned_lsn;
+static bool backup_tablespaces_finished;
 static bool log_copying_running;
 static bool io_watching_thread_running;
 
@@ -2590,7 +2591,7 @@ static bool xtrabackup_copy_logfile(bool last = false)
 		if (!start_lsn) {
 			msg("mariabackup: Error: xtrabackup_copy_logfile()"
 			    " failed.\n");
-			return(true);
+			exit(EXIT_FAILURE);
 		}
 	} while (start_lsn == end_lsn);
 
@@ -2604,6 +2605,16 @@ static bool xtrabackup_copy_logfile(bool last = false)
 	debug_sync_point("xtrabackup_copy_logfile_pause");
 	return(false);
 }
+
+void backup_wait_for_lsn(lsn_t lsn) {
+	for (;;) {
+		if (log_copy_scanned_lsn >= lsn)
+			return;
+		my_sleep(100000);
+	}
+}
+
+extern lsn_t server_lsn_after_lock;
 
 static os_thread_ret_t log_copying_thread(void*)
 {
@@ -2625,6 +2636,7 @@ static os_thread_ret_t log_copying_thread(void*)
 		log_mutex_enter();
 		bool completed = metadata_to_lsn
 			&& metadata_to_lsn < log_copy_scanned_lsn;
+			//&& backup_tablespaces_finished;
 		log_mutex_exit();
 		if (completed) {
 			break;
@@ -3854,6 +3866,7 @@ xtrabackup_backup_func()
 	srv_read_only_mode = TRUE;
 
 	srv_operation = SRV_OPERATION_BACKUP;
+	log_file_op = backup_file_op;
 	metadata_to_lsn = 0;
 
 	if (xb_close_files)
@@ -3867,6 +3880,7 @@ xtrabackup_backup_func()
 fail:
 		metadata_to_lsn = log_copying_running;
 		stop_backup_threads();
+		log_file_op = NULL;
 		if (dst_log_file) {
 			ds_close(dst_log_file);
 			dst_log_file = NULL;
@@ -4271,6 +4285,7 @@ fail_before_log_copying_thread_start:
 	}
 
 	innodb_shutdown();
+	log_file_op = NULL;
 	return(true);
 }
 
@@ -4285,15 +4300,6 @@ void copy_tablespaces_created_during_backup(void)
 	std::vector<fil_node_t *> new_tablespaces;
 	std::vector<std::string> dropped_tablespaces;
 
-	/* From this point on, disable tracking of "optimized" ddl operations.
-	notification about optimized DDL will from now on cause backup to abort.
-	The redo log thread is still running, so it is theoretically possible
-	to get new CREATE INDEX notification, but the odds are low if FTWRL was
-	acquired (i.e -no-lock was not used).
-	*/
-	fil_system_enter();
-	mlog_index_load_callback = optimized_ddl_abort;
-	fil_system_exit();
 
 	for (std::map<ulint,std::string>::iterator iter = tablespaces_in_backup.begin();
 		iter != tablespaces_in_backup.end(); ++iter) {
@@ -4406,7 +4412,7 @@ void copy_tablespaces_created_during_backup(void)
 	for (size_t i = 0; i < dropped_tablespaces.size(); i++) {
 		backup_file_printf((dropped_tablespaces[i] + ".del").c_str(), "%s","");
 	}
-
+	backup_tablespaces_finished= true;
 }
 
 /* ================= prepare ================= */

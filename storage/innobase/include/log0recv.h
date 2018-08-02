@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1997, 2016, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2017, MariaDB Corporation.
+Copyright (c) 2017, 2018, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -156,6 +156,17 @@ void recv_sys_justify_left_parsing_buf();
 /** Backup function checks whether the space id belongs to
 the skip table list given in the mariabackup option. */
 extern bool(*mlog_index_load_callback)(ulint space_id);
+
+/** Report an operation to create, delete, or rename a file during backup.
+@param[in]	space_id	tablespace identifier
+@param[in]	flags		tablespace flags (NULL if not create)
+@param[in]	name		file name (not NUL-terminated)
+@param[in]	len		length of name, in bytes
+@param[in]	new_name	new file name (NULL if not rename)
+@param[in]	new_len		length of new_name, in bytes (0 if NULL) */
+extern void (*log_file_op)(ulint space_id, const byte* flags,
+			   const byte* name, ulint len,
+			   const byte* new_name, ulint new_len);
 
 /** Block of log record data */
 struct recv_data_t{
