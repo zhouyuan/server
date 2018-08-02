@@ -1361,6 +1361,8 @@ out:
 	return(ret);
 }
 
+void copy_tablespaces_created_during_backup(void);
+
 /** Start --backup */
 bool backup_start()
 {
@@ -1393,6 +1395,8 @@ bool backup_start()
 	if (has_rocksdb_plugin()) {
 		rocksdb_create_checkpoint();
 	}
+
+	copy_tablespaces_created_during_backup();
 
 	// There is no need to stop slave thread before coping non-Innodb data when
 	// --no-lock option is used because --no-lock option requires that no DDL or

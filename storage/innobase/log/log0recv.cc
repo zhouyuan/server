@@ -169,9 +169,8 @@ typedef std::map<
 
 static recv_spaces_t	recv_spaces;
 
-/** Backup function checks whether the space id belongs to
-the skip table list given in the mariabackup option. */
-bool(*check_if_backup_includes)(ulint space_id);
+/** Finction called whenever MLOG_INDEX_LOAD is parsed. */
+bool(*mlog_index_load_callback)(ulint space_id);
 
 /** Process a file name from a MLOG_FILE_* record.
 @param[in,out]	name		file name
@@ -2495,8 +2494,8 @@ loop:
 			/* fall through */
 		case MLOG_INDEX_LOAD:
 			if (type == MLOG_INDEX_LOAD) {
-				if (check_if_backup_includes
-				    && !check_if_backup_includes(space)) {
+				if (mlog_index_load_callback
+				    && !mlog_index_load_callback(space)) {
 					ut_ad(srv_operation
 					      == SRV_OPERATION_BACKUP);
 					return true;

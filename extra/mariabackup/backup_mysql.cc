@@ -1771,9 +1771,10 @@ mdl_lock_init()
   }
 }
 
-void
+bool
 mdl_lock_table(ulint space_id)
 {
+  bool result = false;
   std::ostringstream oss;
   oss << "SELECT NAME "
     "FROM INFORMATION_SCHEMA.INNODB_SYS_TABLES "
@@ -1794,11 +1795,18 @@ mdl_lock_table(ulint space_id)
     std::ostringstream lock_query;
     lock_query << "SELECT 1 FROM " << full_table_name  << " LIMIT 0";
     msg_ts("Locking MDL for %s\n", full_table_name.c_str());
-    xb_mysql_query(mdl_con, lock_query.str().c_str(), false, true);
+    if (mysql_query(mdl_con, lock_query.str().c_str())) {
+      msg_ts("Warning : locking MDL failed for space id %zu, name %s\n", space_id, full_table_name.c_str());
+    } else {
+      MYSQL_RES *r = mysql_store_result(mdl_con);
+      mysql_free_result(r);
+      result = true;
+    }
   }
 
   pthread_mutex_unlock(&mdl_lock_con_mutex);
   mysql_free_result(mysql_result);
+  return result;
 }
 
 

@@ -343,6 +343,8 @@ const char *opt_history = NULL;
 char mariabackup_exe[FN_REFLEN];
 char orig_argv1[FN_REFLEN];
 
+std::map<ulint, std::string> tablespaces_in_backup;
+
 /* Whether xtrabackup_binlog_info should be created on recovery */
 static bool recover_binlog_info;
 
@@ -537,49 +539,37 @@ void mdl_lock_all()
 		mdl_lock_table(node->space->id);
 	}
 	datafiles_iter_free(it);
-
-	DBUG_EXECUTE_IF("check_mdl_lock_works",
-		dbug_alter_thread_done =
-		  dbug_start_query_thread("ALTER TABLE test.t ADD COLUMN mdl_lock_column int",
-			 "Waiting for table metadata lock",1, ER_QUERY_INTERRUPTED););
 }
 
-/** Check if the space id belongs to the table which name should
-be skipped based on the --tables, --tables-file and --table-exclude
-options.
+std::set<space_id_t> optimized_ddl_tablespaces;
+
+/** Callback whenever MLOG_INDEX_LOAD happens.
 @param[in]	space_id	space id to check
-@return true if the space id belongs to skip table/database list. */
-static bool backup_includes(space_id_t space_id)
+@return false */
+static bool optimized_ddl_callback(space_id_t space_id)
 {
-	datafiles_iter_t *it = datafiles_iter_new(fil_system);
-	if (!it)
-		return true;
+	fil_system_enter();
+	optimized_ddl_tablespaces.insert(space_id);
+	fil_system_exit();
+	return false;
+}
 
-	while (fil_node_t *node = datafiles_iter_next(it)){
-		if (space_id == 0
-		    || (node->space->id == space_id
-			&& !check_if_skip_table(node->space->name))) {
-
-			msg("mariabackup: Unsupported redo log detected "
-			"and it belongs to %s\n",
-			space_id ? node->name: "the InnoDB system tablespace");
-
-			msg("mariabackup: ALTER TABLE or OPTIMIZE TABLE "
-			"was being executed during the backup.\n");
-
-			if (!opt_lock_ddl_per_table) {
-				msg("mariabackup: Use --lock-ddl-per-table "
-				"parameter to lock all the table before "
-				"backup operation.\n");
-			}
-
-			datafiles_iter_free(it);
-			return false;
-		}
+static bool optimized_ddl_abort(space_id_t space_id)
+{
+	std::string name;
+	fil_system_enter();
+	if (tablespaces_in_backup.find(space_id) != tablespaces_in_backup.end()) {
+		name = tablespaces_in_backup[space_id];
+	}
+	fil_system_exit();
+	if (name.size()) {
+		msg("Optimized (without redo logging) DDL operation on tablespace %zu (%s)is encountered at the late phase of the backup."
+			"Aborting backup. You can set server innodb_log_optimize_ddl = OFF to avoid this error.\n",
+			space_id, name.c_str());
+		exit(EXIT_FAILURE);
 	}
 
-	datafiles_iter_free(it);
-	return true;
+	return false;
 }
 
 /* ======== Date copying thread context ======== */
@@ -2336,7 +2326,7 @@ xb_get_copy_action(const char *dflt)
 
 static
 my_bool
-xtrabackup_copy_datafile(fil_node_t* node, uint thread_n)
+xtrabackup_copy_datafile(fil_node_t* node, uint thread_n, const char *dest_name=0, ulonglong max_size=ULLONG_MAX)
 {
 	char			 dst_name[FN_REFLEN];
 	ds_file_t		*dstfile = NULL;
@@ -2372,14 +2362,15 @@ xtrabackup_copy_datafile(fil_node_t* node, uint thread_n)
 	else {
 		read_filter = &rf_bitmap;
 	}
-	res = xb_fil_cur_open(&cursor, read_filter, node, thread_n);
+	res = xb_fil_cur_open(&cursor, read_filter, node, thread_n,max_size);
 	if (res == XB_FIL_CUR_SKIP) {
 		goto skip;
 	} else if (res == XB_FIL_CUR_ERROR) {
 		goto error;
 	}
 
-	strncpy(dst_name, cursor.rel_path, sizeof(dst_name));
+	strncpy(dst_name, (dest_name)?dest_name : cursor.rel_path, sizeof(dst_name));
+
 
 	/* Setup the page write filter */
 	if (xtrabackup_incremental) {
@@ -2430,6 +2421,10 @@ xtrabackup_copy_datafile(fil_node_t* node, uint thread_n)
 	    && !write_filter->finalize(&write_filt_ctxt, dstfile)) {
 		goto error;
 	}
+
+	mutex_enter(&fil_system->mutex);
+	tablespaces_in_backup[node->space->id] = node_name;
+	mutex_exit(&fil_system->mutex);
 
 	/* close */
 	msg_ts("[%02u]        ...done\n", thread_n);
@@ -2666,6 +2661,42 @@ static os_thread_ret_t io_watching_thread(void*)
 	return(0);
 }
 
+#ifndef DBUG_OFF
+/* 
+In debug mode,  execute SQL statement that was passed via environment.
+To use this facility, you need to
+
+1. Add code DBUG_EXECUTE_MARIABACKUP_EVENT("my_event_name", key););
+  to the code. key is usually a table name
+2. Set environment variable my_event_name_$key SQL statement you want to execute
+   when event occurs, in DBUG_EXECUTE_IF from above.
+   In mtr , you can set environment via 'let' statement (do not use $ as the first char
+   for the variable)
+3. start mariabackup with --dbug=+d,debug_mariabackup_events
+*/
+static void dbug_mariabackup_event(const char *event,const char *key)
+{
+	char envvar[FN_REFLEN];
+	if (key) {
+		snprintf(envvar, sizeof(envvar), "%s_%s", event, key);
+		char *slash = strchr(envvar, '/');
+		if (slash)
+			*slash = '_';
+	} else {
+		strncpy(envvar, event, sizeof(envvar));
+	}
+	char *sql = getenv(envvar);
+	if (sql) {
+		msg("dbug_mariabackup_event : executing '%s'\n", sql);
+		xb_mysql_query(mysql_connection, sql, false, true);
+	}
+
+}
+#define DBUG_MARIABACKUP_EVENT(A, B) DBUG_EXECUTE_IF("mariabackup_events", dbug_mariabackup_event(A,B););
+#else
+#define DBUG_MARIABACKUP_EVENT(A,B)
+#endif
+
 /**************************************************************************
 Datafiles copying thread.*/
 static
@@ -2688,12 +2719,18 @@ data_copy_thread_func(
 
 	while ((node = datafiles_iter_next(ctxt->it)) != NULL) {
 
+		DBUG_MARIABACKUP_EVENT("before_copy", node->space->name);
+
+
 		/* copy the datafile */
 		if(xtrabackup_copy_datafile(node, num)) {
 			msg("[%02u] mariabackup: Error: "
 			    "failed to copy datafile.\n", num);
 			exit(EXIT_FAILURE);
 		}
+
+		DBUG_MARIABACKUP_EVENT("after_copy", node->space->name);
+
 	}
 
 	pthread_mutex_lock(&ctxt->count_mutex);
@@ -3182,7 +3219,7 @@ xb_load_tablespaces()
 	}
 
 	debug_sync_point("xtrabackup_load_tablespaces_pause");
-
+	DBUG_MARIABACKUP_EVENT("after_load_tablespaces", 0);
 	return(DB_SUCCESS);
 }
 
@@ -4116,6 +4153,7 @@ fail_before_log_copying_thread_start:
 		goto fail_before_log_copying_thread_start;
 
 	log_copying_stop = os_event_create(0);
+	mlog_index_load_callback = optimized_ddl_callback;
 	os_thread_create(log_copying_thread, NULL, &log_copying_thread_id);
 
 	/* FLUSH CHANGED_PAGE_BITMAPS call */
@@ -4147,6 +4185,11 @@ fail_before_log_copying_thread_start:
 
 	if (opt_lock_ddl_per_table) {
 		mdl_lock_all();
+
+		DBUG_EXECUTE_IF("check_mdl_lock_works",
+			dbug_alter_thread_done =
+			dbug_start_query_thread("ALTER TABLE test.t ADD COLUMN mdl_lock_column int",
+				"Waiting for table metadata lock", 1, ER_QUERY_INTERRUPTED););
 	}
 
 	it = datafiles_iter_new(fil_system);
@@ -4229,6 +4272,141 @@ fail_before_log_copying_thread_start:
 
 	innodb_shutdown();
 	return(true);
+}
+
+
+/* This function copies tablespaces for tables created during backup. */
+void copy_tablespaces_created_during_backup(void)
+{
+
+	std::map<std::string, ulint> name_to_id;
+
+	std::map<std::string, std::string> renamed_tablespaces;
+	std::vector<fil_node_t *> new_tablespaces;
+	std::vector<std::string> dropped_tablespaces;
+
+	/* From this point on, disable tracking of "optimized" ddl operations.
+	notification about optimized DDL will from now on cause backup to abort.
+	The redo log thread is still running, so it is theoretically possible
+	to get new CREATE INDEX notification, but the odds are low if FTWRL was
+	acquired (i.e -no-lock was not used).
+	*/
+	fil_system_enter();
+	mlog_index_load_callback = optimized_ddl_abort;
+	fil_system_exit();
+
+	for (std::map<ulint,std::string>::iterator iter = tablespaces_in_backup.begin();
+		iter != tablespaces_in_backup.end(); ++iter) {
+		name_to_id[iter->second] = iter->first;
+	}
+
+	//  Close all datanodes, will rescan later.
+	std::vector<fil_node_t *> all_nodes;
+	datafiles_iter_t *it = datafiles_iter_new(fil_system);
+	if (!it)
+		return;
+	while (fil_node_t *node = datafiles_iter_next(it)) {
+		all_nodes.push_back(node);
+	}
+	for (size_t i = 0; i < all_nodes.size(); i++) {
+		fil_node_t *n = all_nodes[i];
+		if (n->space->id == 0)
+			continue;
+		fil_space_close(n->space->name);
+		fil_space_free(n->space->id, false);
+	}
+
+
+	// Find out which tablespaces were newly created, recreated, or renamed while
+	// backup was running.
+
+
+	/* Rescan datadir, load tablespaces that were created during backup.*/
+	enumerate_ibd_files(xb_load_single_table_tablespace);
+	it = datafiles_iter_new(fil_system);
+	if (!it)
+		return;
+
+	// Find out which tablespaces were newly created, recreated, or renamed while
+	// backup was running.
+
+	while (fil_node_t *node = datafiles_iter_next(it)) {
+		fil_space_t *space = node->space;
+		if (!fil_is_user_tablespace_id(space->id))
+			continue;
+		if (check_if_skip_table(space->name))
+			continue;
+
+		if (tablespaces_in_backup.find(space->id) == tablespaces_in_backup.end()) {
+			new_tablespaces.push_back(node);
+		} else if (tablespaces_in_backup[space->id] != space->name){
+			// Same space id after backup, but different name
+			// means there was a RENAME during backup.
+			if (optimized_ddl_tablespaces.find(space->id) != optimized_ddl_tablespaces.end()) {
+				// We need to copy the full tablespace, due to "optimized DDL"
+				dropped_tablespaces.push_back(tablespaces_in_backup[space->id]);
+				new_tablespaces.push_back(node);
+			} else {
+				renamed_tablespaces[tablespaces_in_backup[space->id]] = space->name;
+			}
+		}
+		else if (optimized_ddl_tablespaces.find(space->id) != optimized_ddl_tablespaces.end()) {
+			new_tablespaces.push_back(node);
+		}
+	}
+	datafiles_iter_free(it);
+
+	// Find tablespaces that were dropped while backup was running.
+	for (std::map<ulint, std::string>::iterator iter = tablespaces_in_backup.begin();
+		iter != tablespaces_in_backup.end(); ++iter) {
+
+		ulint id = iter->first;
+		if (!id)
+			continue;
+
+		const char *name = iter->second.c_str();
+
+		mutex_enter(&fil_system->mutex);
+		fil_space_t *space = fil_space_get_by_id(id);
+		if (!space) {
+			space = fil_space_get_by_name(name);
+		}
+		mutex_exit(&fil_system->mutex);
+
+		if (!space)
+			dropped_tablespaces.push_back(name);
+	}
+
+
+	// Copy new tablespaces
+	for (size_t i = 0; i < new_tablespaces.size(); i++) {
+		fil_node_t *n = new_tablespaces[i];
+		std::string dest_name(n->space->name);
+		dest_name.append(".new");
+		bool do_full_copy = optimized_ddl_tablespaces.find(n->space->id) != optimized_ddl_tablespaces.end();
+		if (do_full_copy) {
+			msg(
+				"Performing a full copy of the tablespace %s, because optimized (without redo logging) DDL operation"
+				"ran during backup. You can use set innodb_log_optimize_ddl=OFF to improve backup performance"
+				"in the future.\n",
+				n->space->name);
+		}
+		xtrabackup_copy_datafile(n, 0, dest_name.c_str()/*, do_full_copy ? ULONGLONG_MAX:UNIV_PAGE_SIZE */);
+	}
+
+	// mark tablespaces for rename (--prepare will handle it correctly)
+	for (std::map<std::string, std::string>::iterator iter = renamed_tablespaces.begin();
+		iter != renamed_tablespaces.end(); ++iter) {
+		std::string old_name = iter->first;
+		std::string new_name = iter->second;
+		backup_file_printf((old_name + ".ren").c_str(), "%s", (new_name + ".ibd").c_str());
+	}
+
+	// mark tablespaces for drop.
+	for (size_t i = 0; i < dropped_tablespaces.size(); i++) {
+		backup_file_printf((dropped_tablespaces[i] + ".del").c_str(), "%s","");
+	}
+
 }
 
 /* ================= prepare ================= */
@@ -4739,6 +4917,24 @@ error:
 	return FALSE;
 }
 
+
+std::string change_extension(std::string filename, std::string new_ext) {
+	DBUG_ASSERT(new_ext.size() == 3);
+	std::string new_name(filename);
+	new_name.resize(new_name.size() - new_ext.size());
+	new_name.append(new_ext);
+	return new_name;
+}
+
+
+static void rename_file(std::string from, std::string to) {
+	msg("Renaming %s to %s\n", from.c_str(), to.c_str());
+	if (my_rename(from.c_str(), to.c_str(), MY_WME)) {
+		msg("Cannot rename %s->%s errno %d", from.c_str(), to.c_str(), errno);
+		exit(EXIT_FAILURE);
+	}
+}
+
 /************************************************************************
 Callback to handle datadir entry. Function of this type will be called
 for each entry which matches the mask by xb_process_datadir.
@@ -4749,6 +4945,53 @@ typedef ibool (*handle_datadir_entry_func_t)(
 	const char*	db_name,		/*!<in: database name */
 	const char*	file_name,		/*!<in: file name with suffix */
 	void*		arg);			/*!<in: caller-provided data */
+
+static ibool prepare_new_tablespaces(
+	const char*	data_home_dir,		/*!<in: path to datadir */
+	const char*	db_name,		/*!<in: database name */
+	const char*	file_name,		/*!<in: file name with suffix */
+	void *)
+{
+
+	std::string new_file =  std::string(db_name) + '/' + file_name;
+	/* Find out the size of the new tablespace from the first page*/
+	int fd = open(new_file.c_str(), O_RDWR|O_BINARY);
+	if (fd < 0) {
+		msg("Can't open %s", new_file.c_str());
+		exit(EXIT_FAILURE);
+	}
+#define HEADERSIZE FSP_HEADER_OFFSET + FSP_SIZE + 4
+	byte buf[HEADERSIZE];
+	int bytes = read(fd, buf, HEADERSIZE);
+
+	if (bytes != HEADERSIZE) {
+		msg("Can't fread from %s", new_file.c_str());
+		exit(EXIT_FAILURE);
+	}
+	os_offset_t n_pages = mach_read_from_4(
+		buf + FSP_HEADER_OFFSET + FSP_SIZE);
+	
+	os_offset_t new_size = n_pages * UNIV_PAGE_SIZE;
+	if (new_size) {
+		msg("Extending %s to the size %llu\n", new_file.c_str(), (ulonglong)new_size);
+		if (!os_file_set_size(new_file.c_str(),
+			IF_WIN((HANDLE)_get_osfhandle(fd), fd), new_size)) {
+			msg("Could not extend %s", new_file.c_str());
+			exit(EXIT_FAILURE);
+		}
+	}
+	close(fd);
+	std::string ibd_file = change_extension(new_file, "ibd");
+	if (access(ibd_file.c_str(), R_OK) == 0) {
+		msg("Removing %s\n", ibd_file.c_str());
+		if (my_delete(ibd_file.c_str(), MYF(MY_WME))) {
+			msg("Can't remove %s, errno %d", ibd_file.c_str(), errno);
+			exit(EXIT_FAILURE);
+		}
+	}
+	rename_file(new_file, ibd_file);
+	return TRUE;
+}
 
 /************************************************************************
 Callback to handle datadir entry. Deletes entry if it has no matching
@@ -4955,6 +5198,99 @@ store_binlog_info(const char* filename, const char* name, ulonglong pos)
 	return(true);
 }
 
+
+
+static bool file_exists(std::string name)
+{
+	return access(name.c_str(), R_OK) == 0 ;
+}
+/*
+  For the case tablespace need to be renamed,
+  backup places a file with extension .ren next to .ibd file
+
+  The content of the ".ren" file is the new file name.
+
+  This function does the actual rename operation.
+  (and removes .ren file)
+
+
+  NOTE:  We also need to take care of subtely known as 
+  curcular renames.
+
+  Example: during backup, the following code runs
+  RENAME TABLE A to C, B to A, C to B
+
+  Then we can have these files in the backup
+  A.ibd
+  A.ren (content B.ibd)
+  B.ibd
+  B.ren (content A.ibd)
+
+  if we rename of A.ibd, we cannot rename it directly to
+  B.ibd, since it exists in backup and must not be overwritten.
+
+  Thus, we first rename B.ibd to temporary B.ibt
+  rename A.ibd to B.ibd, and then call this function recursively
+  for B.ibt
+*/
+static void fix_rename(const char *ibd)
+{
+	std::string ren_file(change_extension(ibd,"ren"));
+
+	char target_ibd[FN_REFLEN + 1];
+	FILE *f = fopen(ren_file.c_str(), "r");
+	if (!f) {
+		msg("Can not open %s", ren_file.c_str());
+	}
+	size_t len = fread(target_ibd, 1, FN_REFLEN, f);
+	target_ibd[len] = 0;
+	fclose(f);
+
+	std::string tmp_ibt;
+	if (access(target_ibd, R_OK) == 0) {
+		std::string target_ren(change_extension(target_ibd, "ren"));
+		if (!file_exists(target_ren)) {
+			msg("Expected file %s is not found\n", target_ren.c_str());
+			exit(EXIT_FAILURE);
+		}
+		tmp_ibt = change_extension(target_ibd, "ibt");
+		rename_file(target_ibd, tmp_ibt);
+	}
+
+	rename_file(std::string(ibd), target_ibd);
+	unlink(ren_file.c_str());
+	if (!tmp_ibt.empty()) {
+		fix_rename(tmp_ibt.c_str());
+	}
+}
+
+/*
+  At the start of prepare, do some DDL fixups.
+  Renaming, replacing, or remove files, if *.ren,*.new or *.del markers are present
+  These markers are created during copy_tablespaces_created_during_backup function.
+*/
+static void fix_ddl_in_prepare(const char *dbname, const char *tablename, bool)
+{
+	char filename[FN_REFLEN];
+	char ibd[FN_REFLEN];
+	snprintf(ibd, sizeof(filename), "%s/%s", dbname, tablename);
+	strncpy(filename, ibd, sizeof(filename));
+
+	if (file_exists(change_extension(ibd,"del"))) {
+		msg("Fix DDL during prepare - remove %s ", ibd);
+		if (unlink(ibd)) {
+			msg("unlink failed (errno %d)\n", errno);
+			exit(EXIT_FAILURE);
+		}
+		return;
+	}
+
+	if (file_exists(change_extension(ibd, "ren"))){
+		fix_rename(ibd);
+		return;
+	}
+}
+
 /** Implement --prepare
 @return	whether the operation succeeded */
 static bool
@@ -4971,6 +5307,11 @@ xtrabackup_prepare_func(char** argv)
 		return(false);
 	}
 	msg("mariabackup: cd to %s\n", xtrabackup_real_target_dir);
+
+	fil_path_to_mysql_datadir = ".";
+	xb_process_datadir("./", ".new", prepare_new_tablespaces);
+	
+	enumerate_ibd_files(fix_ddl_in_prepare);
 
 	int argc; for (argc = 0; argv[argc]; argc++) {}
 	encryption_plugin_prepare_init(argc, argv);
@@ -5335,7 +5676,7 @@ handle_options(int argc, char **argv, char ***argv_client, char ***argv_server)
 	srv_operation = SRV_OPERATION_RESTORE;
 
 	files_charset_info = &my_charset_utf8_general_ci;
-	check_if_backup_includes = backup_includes;
+
 
 	setup_error_messages();
 	sys_var_init();

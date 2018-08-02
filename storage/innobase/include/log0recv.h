@@ -155,7 +155,7 @@ void recv_sys_justify_left_parsing_buf();
 
 /** Backup function checks whether the space id belongs to
 the skip table list given in the mariabackup option. */
-extern bool(*check_if_backup_includes)(ulint space_id);
+extern bool(*mlog_index_load_callback)(ulint space_id);
 
 /** Block of log record data */
 struct recv_data_t{
