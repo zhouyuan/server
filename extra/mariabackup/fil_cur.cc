@@ -157,13 +157,14 @@ xb_fil_cur_open(
 		xb_get_relative_path(cursor->abs_path, cursor->is_system()),
 		sizeof(cursor->rel_path));
 
+#if 0
 	if (access(cursor->abs_path, R_OK)) {
 		msg("[%02u] mariabackup: warning: "
 			"tablespace %s is not readable \n",
 			thread_n, cursor->abs_path);
 		return(XB_FIL_CUR_SKIP);
 	}
-
+#endif
 	/* In the backup mode we should already have a tablespace handle created
 	by fil_ibd_load() unless it is a system
 	tablespace. Otherwise we open the file here. */

@@ -169,8 +169,10 @@ typedef std::map<
 
 static recv_spaces_t	recv_spaces;
 
-/** Finction called whenever MLOG_INDEX_LOAD is parsed. */
-bool(*mlog_index_load_callback)(ulint space_id);
+/** Report optimized DDL operation (without redo log), corresponding to MLOG_INDEX_LOAD.
+@param[in]	space_id	tablespace identifier
+*/
+void (*log_optimized_ddl_op)(ulint space_id);
 
 /** Report an operation to create, delete, or rename a file during backup.
 @param[in]	space_id	tablespace identifier
@@ -2514,8 +2516,8 @@ loop:
 			/* fall through */
 		case MLOG_INDEX_LOAD:
 			if (type == MLOG_INDEX_LOAD) {
-				if (mlog_index_load_callback) {
-					mlog_index_load_callback(space);
+				if (log_optimized_ddl_op) {
+					log_optimized_ddl_op(space);
 				}
 			}
 			/* fall through */

@@ -41,6 +41,9 @@ copy_file(ds_ctxt_t *datasink,
 void backup_file_op(ulint space_id, const byte* flags,
 		    const byte* name, ulint len,
 		    const byte* new_name, ulint new_len);
+
+void backup_optimized_ddl_op(ulint space_id);
+
 /** Start --backup */
 bool backup_start();
 /** Release resources after backup_start() */

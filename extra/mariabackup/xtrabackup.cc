@@ -344,6 +344,9 @@ const char *opt_history = NULL;
 char mariabackup_exe[FN_REFLEN];
 char orig_argv1[FN_REFLEN];
 
+pthread_mutex_t backup_mutex;
+pthread_cond_t  redo_log_read_cond;
+
 std::map<ulint, std::string> tablespaces_in_backup;
 
 /* Whether xtrabackup_binlog_info should be created on recovery */
@@ -542,35 +545,68 @@ void mdl_lock_all()
 	datafiles_iter_free(it);
 }
 
+
+std::set<ulint> log_optimized_ddl;
+std::map<ulint, std::string> log_new_tables;
+std::map<ulint, std::string> log_renamed_tables;
+std::set<ulint> log_dropped_tables;
+
+/** Report an operation to create, delete, or rename a file during backup.
+@param[in]	space_id	tablespace identifier
+@param[in]	flags		tablespace flags (NULL if not create)
+@param[in]	name		file name (not NUL-terminated)
+@param[in]	len		length of name, in bytes
+@param[in]	new_name	new file name (NULL if not rename)
+@param[in]	new_len		length of new_name, in bytes (0 if NULL) */
+void backup_file_op(ulint space_id, const byte* flags,
+	const byte* name, ulint len,
+	const byte* new_name, ulint new_len)
+{
+	ut_ad(!flags || !new_name);
+	ut_ad(name);
+	ut_ad(len);
+	ut_ad(!new_name == !new_len);
+	pthread_mutex_lock(&backup_mutex);
+
+	if (flags) {
+		log_new_tables[space_id] = std::string((const char *)name, len);
+		msg("create %zu \"%.*s\": %x\n",
+			space_id, int(len), name, mach_read_from_4(flags));
+	}
+	else if (new_name) {
+		std::string val((const char *)new_name, new_len);
+		if (log_new_tables.find(space_id) != log_new_tables.end()) {
+			log_new_tables[space_id] = val;
+		}
+		else {
+			log_renamed_tables[space_id] = val;
+		}
+		msg("rename %zu \"%.*s\",\"%.*s\"\n",
+			space_id, int(len), name, int(new_len), new_name);
+	} else {
+		log_optimized_ddl.erase(space_id);
+		if (log_new_tables.find(space_id) != log_new_tables.end()) {
+			log_new_tables.erase(space_id);
+		} else {
+			log_renamed_tables.erase(space_id);
+			log_dropped_tables.insert(space_id);
+		}
+		msg("delete %zu \"%.*s\"\n", space_id, int(len), name);
+	}
+	pthread_mutex_unlock(&backup_mutex);
+}
+
+
 std::set<space_id_t> optimized_ddl_tablespaces;
 
 /** Callback whenever MLOG_INDEX_LOAD happens.
 @param[in]	space_id	space id to check
 @return false */
-static bool optimized_ddl_callback(space_id_t space_id)
+void backup_optimized_ddl_op(ulint space_id)
 {
-	fil_system_enter();
-	optimized_ddl_tablespaces.insert(space_id);
-	fil_system_exit();
-	return false;
-}
-
-static bool optimized_ddl_abort(space_id_t space_id)
-{
-	std::string name;
-	fil_system_enter();
-	if (tablespaces_in_backup.find(space_id) != tablespaces_in_backup.end()) {
-		name = tablespaces_in_backup[space_id];
-	}
-	fil_system_exit();
-	if (name.size()) {
-		msg("Optimized (without redo logging) DDL operation on tablespace %zu (%s)is encountered at the late phase of the backup."
-			"Aborting backup. You can set server innodb_log_optimize_ddl = OFF to avoid this error.\n",
-			space_id, name.c_str());
-		exit(EXIT_FAILURE);
-	}
-
-	return false;
+	pthread_mutex_lock(&backup_mutex);
+	log_optimized_ddl.insert(space_id);
+	pthread_mutex_unlock(&backup_mutex);
 }
 
 /* ======== Date copying thread context ======== */
@@ -2357,12 +2393,22 @@ xtrabackup_copy_datafile(fil_node_t* node, uint thread_n, const char *dest_name=
 		return(FALSE);
 	}
 
+	bool was_dropped;
+	pthread_mutex_lock(&backup_mutex);
+	was_dropped = (log_dropped_tables.find(node->space->id) != log_dropped_tables.end());
+	pthread_mutex_unlock(&backup_mutex);
+	if (was_dropped) {
+		fil_space_close(node->space->name);
+		goto skip;
+	}
+
 	if (!changed_page_bitmap) {
 		read_filter = &rf_pass_through;
 	}
 	else {
 		read_filter = &rf_bitmap;
 	}
+
 	res = xb_fil_cur_open(&cursor, read_filter, node, thread_n,max_size);
 	if (res == XB_FIL_CUR_SKIP) {
 		goto skip;
@@ -2423,9 +2469,9 @@ xtrabackup_copy_datafile(fil_node_t* node, uint thread_n, const char *dest_name=
 		goto error;
 	}
 
-	mutex_enter(&fil_system->mutex);
+	pthread_mutex_lock(&backup_mutex);
 	tablespaces_in_backup[node->space->id] = node_name;
-	mutex_exit(&fil_system->mutex);
+	pthread_mutex_unlock(&backup_mutex);
 
 	/* close */
 	msg_ts("[%02u]        ...done\n", thread_n);
@@ -2600,18 +2646,26 @@ static bool xtrabackup_copy_logfile(bool last = false)
 	msg_ts(">> log scanned up to (" LSN_PF ")\n", start_lsn);
 
 	/* update global variable*/
+	pthread_mutex_lock(&backup_mutex);
 	log_copy_scanned_lsn = start_lsn;
+	pthread_cond_broadcast(&redo_log_read_cond);
+	pthread_mutex_unlock(&backup_mutex);
 
 	debug_sync_point("xtrabackup_copy_logfile_pause");
 	return(false);
 }
 
+/**
+Wait until redo log copying thread processes given lsn
+*/
 void backup_wait_for_lsn(lsn_t lsn) {
-	for (;;) {
-		if (log_copy_scanned_lsn >= lsn)
-			return;
-		my_sleep(100000);
-	}
+	bool completed = false;
+	pthread_mutex_lock(&backup_mutex);
+	do {
+		pthread_cond_wait(&redo_log_read_cond, &backup_mutex);
+		completed = log_copy_scanned_lsn >= lsn;
+	} while (!completed);
+	pthread_mutex_unlock(&backup_mutex);
 }
 
 extern lsn_t server_lsn_after_lock;
@@ -3840,6 +3894,8 @@ xtrabackup_backup_func()
 	uint			 count;
 	pthread_mutex_t		 count_mutex;
 	data_thread_ctxt_t 	*data_threads;
+	pthread_mutex_init(&backup_mutex, NULL);
+	pthread_cond_init(&redo_log_read_cond, NULL);
 
 #ifdef USE_POSIX_FADVISE
 	msg("mariabackup: uses posix_fadvise().\n");
@@ -4167,7 +4223,7 @@ fail_before_log_copying_thread_start:
 		goto fail_before_log_copying_thread_start;
 
 	log_copying_stop = os_event_create(0);
-	mlog_index_load_callback = optimized_ddl_callback;
+	log_optimized_ddl_op = backup_optimized_ddl_op;
 	os_thread_create(log_copying_thread, NULL, &log_copying_thread_id);
 
 	/* FLUSH CHANGED_PAGE_BITMAPS call */
@@ -4286,6 +4342,8 @@ fail_before_log_copying_thread_start:
 
 	innodb_shutdown();
 	log_file_op = NULL;
+	pthread_mutex_destroy(&backup_mutex);
+	pthread_cond_destroy(&redo_log_read_cond);
 	return(true);
 }
 

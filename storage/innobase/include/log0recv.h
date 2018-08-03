@@ -153,9 +153,10 @@ bool recv_parse_log_recs(lsn_t checkpoint_lsn, store_t store, bool apply);
 /** Moves the parsing buffer data left to the buffer start. */
 void recv_sys_justify_left_parsing_buf();
 
-/** Backup function checks whether the space id belongs to
-the skip table list given in the mariabackup option. */
-extern bool(*mlog_index_load_callback)(ulint space_id);
+/** Report optimized DDL operation (without redo log), corresponding to MLOG_INDEX_LOAD.
+@param[in]	space_id	tablespace identifier
+*/
+extern void(*log_optimized_ddl_op)(ulint space_id);
 
 /** Report an operation to create, delete, or rename a file during backup.
 @param[in]	space_id	tablespace identifier
