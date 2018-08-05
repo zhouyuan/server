@@ -348,15 +348,6 @@ struct fil_space_t {
 	UT_LIST_NODE_T(fil_space_t) space_list;
 				/*!< list of all spaces */
 
-	/*!< Protected by fil_system */
-	UT_LIST_NODE_T(fil_space_t) rotation_list;
-				/*!< list of spaces needing
-				key rotation */
-
-	bool		is_in_rotation_list;
-				/*!< true if this space is
-				currently in key rotation list */
-
 	ulint		magic_n;/*!< FIL_SPACE_MAGIC_N */
 
 	/** @return whether the tablespace is about to be dropped or truncated */
@@ -715,20 +706,6 @@ If NULL, use the first fil_space_t on fil_system->space_list.
 UNIV_INTERN
 fil_space_t*
 fil_space_next(
-	fil_space_t*	prev_space)
-	MY_ATTRIBUTE((warn_unused_result));
-
-/** Return the next fil_space_t from key rotation list.
-Once started, the caller must keep calling this until it returns NULL.
-fil_space_acquire() and fil_space_release() are invoked here which
-blocks a concurrent operation from dropping the tablespace.
-@param[in,out]	prev_space	Pointer to the previous fil_space_t.
-If NULL, use the first fil_space_t on fil_system->space_list.
-@return pointer to the next fil_space_t.
-@retval NULL if this was the last*/
-UNIV_INTERN
-fil_space_t*
-fil_space_keyrotate_next(
 	fil_space_t*	prev_space)
 	MY_ATTRIBUTE((warn_unused_result));
 

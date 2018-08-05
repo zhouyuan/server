@@ -93,6 +93,8 @@ static uint n_fil_crypt_iops_allocated = 0;
 extern uint srv_background_scrub_data_interval;
 extern uint srv_background_scrub_data_check_interval;
 
+UNIV_INTERN my_bool srv_encrypt_tables_deferred;
+
 #define DEBUG_KEYROTATION_THROTTLING 0
 
 /** Statistics variables */
@@ -1521,16 +1523,18 @@ fil_crypt_find_space_to_rotate(
 		state->space = NULL;
 	}
 
-	/* If key rotation is enabled (default) we iterate all tablespaces.
-	If key rotation is not enabled we iterate only the tablespaces
-	added to keyrotation list. */
-	if (srv_fil_crypt_rotate_key_age) {
-		state->space = fil_space_next(state->space);
-	} else {
-		state->space = fil_space_keyrotate_next(state->space);
-	}
+	state->space = fil_space_next(state->space);
 
 	while (!state->should_shutdown() && state->space) {
+
+		/* If innodb_encrypt_tables_deferred is enabled then
+		no need to read page 0 if it is not yet read. */
+		if (srv_encrypt_tables_deferred
+		    && !(state->space->size || state->space->crypt_data)) {
+			state->space = fil_space_next(state->space);
+			continue;
+		}
+
 		fil_crypt_read_crypt_data(state->space);
 
 		if (fil_crypt_space_needs_rotation(state, key_state, recheck)) {
@@ -1541,11 +1545,7 @@ fil_crypt_find_space_to_rotate(
 			return true;
 		}
 
-		if (srv_fil_crypt_rotate_key_age) {
-			state->space = fil_space_next(state->space);
-		} else {
-			state->space = fil_space_keyrotate_next(state->space);
-		}
+		state->space = fil_space_next(state->space);
 	}
 
 	/* if we didn't find any space return iops */
