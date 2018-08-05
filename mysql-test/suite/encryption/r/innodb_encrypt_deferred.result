@@ -12,30 +12,30 @@ SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_
 NAME
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
 NAME
-mysql/innodb_table_stats
+./ibdata1
 mysql/innodb_index_stats
+mysql/innodb_table_stats
 test/t1
 test/t2
-./ibdata1
 # Now turn off encryption and wait for threads to decrypt all tablespaces
 SET GLOBAL innodb_encryption_rotate_key_age = 1;
 SET GLOBAL innodb_encrypt_tables = off;
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
 NAME
-mysql/innodb_table_stats
+./ibdata1
 mysql/innodb_index_stats
+mysql/innodb_table_stats
 test/t1
 test/t2
-./ibdata1
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
 NAME
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
 NAME
-mysql/innodb_table_stats
+./ibdata1
 mysql/innodb_index_stats
+mysql/innodb_table_stats
 test/t1
 test/t2
-./ibdata1
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
 NAME
 DROP TABLE t2, t1;
