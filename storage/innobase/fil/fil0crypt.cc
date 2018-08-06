@@ -2473,10 +2473,9 @@ fil_space_crypt_get_status(
 
 	ut_ad(space->n_pending_ops > 0);
 	fil_crypt_read_crypt_data(const_cast<fil_space_t*>(space));
-	status->space = ULINT_UNDEFINED;
+	status->space = space->id;
 
 	if (fil_space_crypt_t* crypt_data = space->crypt_data) {
-		status->space = space->id;
 		mutex_enter(&crypt_data->mutex);
 		status->scheme = crypt_data->type;
 		status->keyserver_requests = crypt_data->keyserver_requests;

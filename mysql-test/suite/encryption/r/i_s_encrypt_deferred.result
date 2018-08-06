@@ -1,0 +1,28 @@
+CREATE TABLE t1 (f1 INT, f2 VARCHAR(256))engine=innodb;
+INSERT INTO t1 VALUES(1, "MariaDB"), (2, "Robot"), (3, "Science");
+INSERT INTO t1 SELECT * FROM t1;
+CREATE TABLE t2(f1 INT, f2 VARCHAR(256))engine=innodb;
+INSERT INTO t2 SELECT * FROM t1;
+# Restart the server with encryption and
+# innodb_encrypt_tables_deferred enabled.
+SELECT * FROM t2 LIMIT 1;
+f1	f2
+1	MariaDB
+# Display only unloaded tablespaces
+SELECT NAME, SIZE, IS_ENCRYPT FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION
+WHERE SIZE is NULL AND IS_ENCRYPT = 0;
+NAME	SIZE	IS_ENCRYPT
+test/t1	NULL	0
+# Restart the server with innodb_encrypt_tables disabled and
+# innodb_encrypt_tables_deferred enabled.
+SELECT * FROM t2 LIMIT 1;
+f1	f2
+1	MariaDB
+# Display only unencrypted tablespaces
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0 AND SIZE IS NOT NULL;
+NAME
+./ibdata1
+mysql/innodb_index_stats
+mysql/innodb_table_stats
+test/t2
+DROP TABLE t2, t1;

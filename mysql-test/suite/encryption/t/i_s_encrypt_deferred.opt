@@ -1,0 +1,5 @@
+--innodb-tablespaces-encryption
+--innodb_encryption_threads=1
+--innodb_encryption_rotate_key_age=100
+--innodb_buffer_pool_load_at_startup=0
+--innodb_encrypt_tables_deferred=1

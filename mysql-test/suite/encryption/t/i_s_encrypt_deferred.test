@@ -1,0 +1,38 @@
+-- source include/have_innodb.inc
+-- source include/not_embedded.inc
+-- source include/have_example_key_management_plugin.inc
+
+CREATE TABLE t1 (f1 INT, f2 VARCHAR(256))engine=innodb;
+INSERT INTO t1 VALUES(1, "MariaDB"), (2, "Robot"), (3, "Science");
+INSERT INTO t1 SELECT * FROM t1;
+
+CREATE TABLE t2(f1 INT, f2 VARCHAR(256))engine=innodb;
+INSERT INTO t2 SELECT * FROM t1;
+
+--echo # Restart the server with encryption and
+--echo # innodb_encrypt_tables_deferred enabled.
+
+let $restart_parameters= --innodb_encrypt_tables=ON;
+--source include/restart_mysqld.inc
+
+SELECT * FROM t2 LIMIT 1;
+
+--echo # Display only unloaded tablespaces
+SELECT NAME, SIZE, IS_ENCRYPT FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION
+WHERE SIZE is NULL AND IS_ENCRYPT = 0;
+
+--echo # Restart the server with innodb_encrypt_tables disabled and
+--echo # innodb_encrypt_tables_deferred enabled.
+
+let $restart_parameters= --innodb_encrypt_tables=OFF;
+--source include/restart_mysqld.inc
+
+SELECT * FROM t2 LIMIT 1;
+
+--echo # Display only unencrypted tablespaces
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0 AND SIZE IS NOT NULL;
+
+let $restart_parameters=;
+--source include/restart_mysqld.inc
+
+DROP TABLE t2, t1;

@@ -8512,6 +8512,24 @@ static ST_FIELD_INFO	innodb_tablespaces_encryption_fields_info[] =
 	 STRUCT_FLD(old_name,		""),
 	 STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
 
+#define TABLESPACES_ENCRYPTION_SIZE	10
+	{STRUCT_FLD(field_name,		"SIZE"),
+	 STRUCT_FLD(field_length,	MY_INT64_NUM_DECIMAL_DIGITS),
+	 STRUCT_FLD(field_type,		MYSQL_TYPE_LONGLONG),
+	 STRUCT_FLD(value,		0),
+	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED | MY_I_S_MAYBE_NULL),
+	 STRUCT_FLD(old_name,		""),
+	 STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
+
+#define TABLESPACES_ENCRYPTION_IS_ENCRYPT	11
+	{STRUCT_FLD(field_name,		"IS_ENCRYPT"),
+	 STRUCT_FLD(field_length,	1),
+	 STRUCT_FLD(field_type,		MYSQL_TYPE_LONG),
+	 STRUCT_FLD(value,		0),
+	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED),
+	 STRUCT_FLD(old_name,		""),
+	 STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
+
 	END_OF_ST_FIELD_INFO
 };
 
@@ -8536,13 +8554,15 @@ i_s_dict_fill_tablespaces_encryption(
 
 	fields = table_to_fill->field;
 
-	fil_space_crypt_get_status(space, &status);
+	if (space->size) {
+		fields[TABLESPACES_ENCRYPTION_SIZE]->set_notnull();
 
-	/* If tablespace id does not match, we did not find
-	encryption information for this tablespace. */
-	if (!space->crypt_data || space->id != status.space) {
-		goto skip;
+		OK(fields[TABLESPACES_ENCRYPTION_SIZE]->store(space->size));
+	} else {
+		fields[TABLESPACES_ENCRYPTION_SIZE]->set_null();
 	}
+
+	fil_space_crypt_get_status(space, &status);
 
 	OK(fields[TABLESPACES_ENCRYPTION_SPACE]->store(space->id));
 
@@ -8576,9 +8596,11 @@ i_s_dict_fill_tablespaces_encryption(
 			->set_null();
 	}
 
+	OK(fields[TABLESPACES_ENCRYPTION_IS_ENCRYPT]->store(
+			space->crypt_data ? 1: 0));
+
 	OK(schema_table_store_record(thd, table_to_fill));
 
-skip:
 	DBUG_RETURN(0);
 }
 /*******************************************************************//**
