@@ -1361,8 +1361,7 @@ out:
 	return(ret);
 }
 
-void copy_tablespaces_created_during_backup(void);
-
+void backup_fix_ddl(void);
 
 #define LSN_PREFIX_IN_SHOW_STATUS  "\nLog sequence number "
 static lsn_t get_current_lsn(MYSQL *connection) {
@@ -1422,7 +1421,7 @@ bool backup_start()
 
 	msg_ts("Waiting for log copy thread to read lsn %llu\n", server_lsn_after_lock);
 	backup_wait_for_lsn(server_lsn_after_lock);
-	copy_tablespaces_created_during_backup();
+	backup_fix_ddl();
 
 	// There is no need to stop slave thread before coping non-Innodb data when
 	// --no-lock option is used because --no-lock option requires that no DDL or
