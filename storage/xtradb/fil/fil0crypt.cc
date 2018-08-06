@@ -982,6 +982,12 @@ fil_crypt_needs_rotation(
 		return true;
 	}
 
+	/* If rotate_key_age is zero then don't re-encrypt
+	the encrypted tablespace. */
+	if (rotate_key_age ==0) {
+		return false;
+	}
+
 	/* this is rotation encrypted => encrypted,
 	* only reencrypt if key is sufficiently old */
 	if (key_version + rotate_key_age < latest_key_version) {

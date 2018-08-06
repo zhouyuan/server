@@ -982,6 +982,12 @@ fil_crypt_needs_rotation(
 		return true;
 	}
 
+	/** If the rotate_key_age is zero then innodb doesn't
+	re-encrypt the encrypted tablespace. */
+	if (rotate_key_age == 0) {
+		return false;
+	}
+
 	/* this is rotation encrypted => encrypted,
 	* only reencrypt if key is sufficiently old */
 	if (key_version + rotate_key_age < latest_key_version) {
@@ -1266,6 +1272,7 @@ fil_crypt_space_needs_rotation(
 			key_state->key_id= crypt_data->key_id;
 			fil_crypt_get_key_state(key_state, crypt_data);
 		}
+
 
 		bool need_key_rotation = fil_crypt_needs_rotation(
 			crypt_data,
