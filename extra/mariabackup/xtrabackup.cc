@@ -352,13 +352,10 @@ space_id_to_name_map tables_in_backup;
 struct log_ddl_tracker {
 	/** Tablespaces for that optimized DDL without redo log was found.*/
 	std::set<space_id_t> optimized_ddl;
-	/** Tablespaces, that were created during backup. */
-	space_id_to_name_map creates;
-	/** Tablespaces renamed during backup (id->name map) */
-	space_id_to_name_map renames;
-	/** Tablespaces that were dropped during backup */
-	space_id_to_name_map drops;
+	std::set<space_id_t> drops;
+	std::map<std::string, space_id_t> name_to_id;
 };
+const space_id_t REMOVED_SPACE_ID = ULINT_MAX;
 static log_ddl_tracker ddl_tracker;
 
 
@@ -563,12 +560,23 @@ void mdl_lock_all()
 std::string filename_to_spacename(const byte *filename, size_t len)
 {
 	// null- terminate filename
-	char buf[FN_REFLEN];
-	strncpy(buf, (const char *)filename, sizeof(buf));
-	char *tmp = fil_path_to_space_name(buf);
-	std::string ret(tmp);
-	ut_free(tmp);
-	return ret;
+	char *f = (char *)malloc(len + 1);
+	ut_a(f);
+	memcpy(f, filename, len);
+	f[len] = 0;
+	for (size_t i = 0; i < len; i++)
+		if (f[i] == '\\')
+			f[i] = '/';
+	char *p = strrchr(f, '.');
+	ut_a(p);
+	*p = 0;
+	char *table = strrchr(f, '/');
+	ut_a(table);
+	*table = 0;
+	char *db = strrchr(f, '/');
+	ut_a(db);
+	*table = '/';
+	return std::string(db);
 }
 
 /** Report an operation to create, delete, or rename a file during backup.
@@ -582,6 +590,10 @@ void backup_file_op(ulint space_id, const byte* flags,
 	const byte* name, ulint len,
 	const byte* new_name, ulint new_len)
 {
+	// TODO : handle incremental
+	if (xtrabackup_incremental)
+		return;
+
 	ut_ad(!flags || !new_name);
 	ut_ad(name);
 	ut_ad(len);
@@ -589,29 +601,19 @@ void backup_file_op(ulint space_id, const byte* flags,
 	pthread_mutex_lock(&backup_mutex);
 
 	if (flags) {
-		ddl_tracker.creates[space_id] = filename_to_spacename(name, len);
+		ddl_tracker.name_to_id[filename_to_spacename(name, len)] = space_id;
 		msg("DDL tracking :  create %zu \"%.*s\": %x\n",
 			space_id, int(len), name, mach_read_from_4(flags));
 	}
 	else if (new_name) {
-		std::string val(filename_to_spacename(new_name, new_len));
-		if (ddl_tracker.creates.find(space_id) != ddl_tracker.creates.end()) {
-			ddl_tracker.creates[space_id] = val;
-		}
-		else {
-			ddl_tracker.renames[space_id] = val;
-		}
-		msg("DDL tracking entry : rename %zu \"%.*s\",\"%.*s\"\n",
+		ddl_tracker.name_to_id[filename_to_spacename(new_name, new_len)] = space_id;
+		ddl_tracker.name_to_id[filename_to_spacename(name, len)] = REMOVED_SPACE_ID;
+		msg("DDL tracking : rename %zu \"%.*s\",\"%.*s\"\n",
 			space_id, int(len), name, int(new_len), new_name);
 	} else {
-		ddl_tracker.optimized_ddl.erase(space_id);
-		if (ddl_tracker.creates.find(space_id) != ddl_tracker.creates.end()) {
-			ddl_tracker.creates.erase(space_id);
-		} else {
-			ddl_tracker.renames.erase(space_id);
-			ddl_tracker.drops[space_id] = filename_to_spacename(name, len);
-		}
-		msg("DDL tracking entry : delete %zu \"%.*s\"\n", space_id, int(len), name);
+		ddl_tracker.drops.insert(space_id);
+		ddl_tracker.name_to_id[filename_to_spacename(name, len)] = REMOVED_SPACE_ID;
+		msg("DDL tracking : delete %zu \"%.*s\"\n", space_id, int(len), name);
 	}
 	pthread_mutex_unlock(&backup_mutex);
 }
@@ -622,6 +624,10 @@ void backup_file_op(ulint space_id, const byte* flags,
 @return false */
 void backup_optimized_ddl_op(ulint space_id)
 {
+	// TODO : handle incremental
+	if (xtrabackup_incremental)
+		return;
+
 	pthread_mutex_lock(&backup_mutex);
 	ddl_tracker.optimized_ddl.insert(space_id);
 	pthread_mutex_unlock(&backup_mutex);
@@ -4315,10 +4321,6 @@ fail_before_log_copying_thread_start:
 	pthread_mutex_destroy(&count_mutex);
 	free(data_threads);
 	datafiles_iter_free(it);
-
-	if (changed_page_bitmap) {
-		xb_page_bitmap_deinit(changed_page_bitmap);
-	}
 	}
 
 	bool ok = backup_start();
@@ -4342,6 +4344,9 @@ fail_before_log_copying_thread_start:
 		goto fail;
 	}
 
+	if (changed_page_bitmap) {
+		xb_page_bitmap_deinit(changed_page_bitmap);
+	}
 	xtrabackup_destroy_datasinks();
 
 	msg("mariabackup: Redo log (from LSN " LSN_PF " to " LSN_PF
@@ -4386,15 +4391,7 @@ FTWRL.  This ensures consistent backup in presence of DDL.
 */
 void backup_fix_ddl(void)
 {
-
-	std::map<std::string, ulint> name_to_id;
-
-	for (std::map<ulint,std::string>::iterator iter = tables_in_backup.begin();
-		iter != tables_in_backup.end(); ++iter) {
-		name_to_id[iter->second] = iter->first;
-	}
-
-	//  Close all datanodes, reload what we need later rescan later.
+	//  Close all datanodes, will rescan later.
 	std::vector<fil_node_t *> all_nodes;
 	datafiles_iter_t *it = datafiles_iter_new(fil_system);
 	if (!it)
@@ -4402,7 +4399,6 @@ void backup_fix_ddl(void)
 	while (fil_node_t *node = datafiles_iter_next(it)) {
 		all_nodes.push_back(node);
 	}
-
 	for (size_t i = 0; i < all_nodes.size(); i++) {
 		fil_node_t *n = all_nodes[i];
 		if (n->space->id == 0)
@@ -4410,116 +4406,107 @@ void backup_fix_ddl(void)
 		fil_space_close(n->space->name);
 		fil_space_free(n->space->id, false);
 	}
+	std::map<std::string, ulint> name_to_id;
 
-
-	std::set<std::string> nodrop_tables;
-	std::set<std::string> spaces_to_load;
-
-	for (space_id_to_name_map::iterator iter = tables_in_backup.begin();
-		iter != tables_in_backup.end(); iter++) {
-		ulint id = iter->first;
-		std::string &name = iter->second;
-
-		if (ddl_tracker.renames.find(id) == ddl_tracker.renames.end())
-			continue;
-
-		/* Find tables that were ultimately renamed to itself (e.g a->b, b->a). 
-			Remove from renamed list.*/
-		if (name == ddl_tracker.renames[id]) {
-			ddl_tracker.renames.erase(id);
-			continue;
-		}
-
-		/* optimized DDL operation needs reload, thus for renamed tables
-		we handle this as delete/create */
-		if (ddl_tracker.optimized_ddl.find(id) != ddl_tracker.optimized_ddl.end()) {
-			ddl_tracker.drops[id] = tables_in_backup[id];
-			ddl_tracker.creates[id] = ddl_tracker.renames[id];
-			ddl_tracker.renames.erase(id);
-		}
+	for (std::map<ulint, std::string>::iterator iter = tables_in_backup.begin();
+		iter != tables_in_backup.end(); ++iter) {
+		name_to_id[iter->second] = iter->first;
 	}
 
-	for (std::set<space_id_t>::iterator iter = ddl_tracker.optimized_ddl.begin();
-		iter != ddl_tracker.optimized_ddl.end(); iter++) {
-		space_id_t id = *iter;
-		if (tables_in_backup.find(id) == tables_in_backup.end())
-			continue;
-		spaces_to_load.insert(tables_in_backup[id]);
-	}
 
+	std::map<std::string, std::string> renamed_tables;
+	std::vector<fil_node_t *> new_tables;
+	std::vector<std::string> dropped_tables;
 	// Find out which tablespaces were newly created, recreated, or renamed while
 	// backup was running.
-	for (space_id_to_name_map::iterator iter = ddl_tracker.renames.begin();
-		iter != ddl_tracker.renames.end(); iter++) {
-		space_id_t id = iter->first;
-		std::string &new_name = iter->second;
-		std::string &old_name = tables_in_backup[id];
-		if (old_name == new_name)
-			continue;
-		if (old_name.size() == 0 && !check_if_skip_table(new_name.c_str())) {
-			// failed copy ?
-			spaces_to_load.insert(new_name);
-		}
-		else {
-			backup_file_printf((old_name + ".ren").c_str(), "%s", (new_name + ".ibd").c_str());
-		}
-		nodrop_tables.insert(old_name);
-		nodrop_tables.insert(new_name);
-	}
-
-	for (space_id_to_name_map::iterator iter = ddl_tracker.creates.begin();
-		iter != ddl_tracker.creates.end(); iter++) {
-		std::string &name = iter->second;
-
-		if (!check_if_skip_table(name.c_str()))
-			spaces_to_load.insert(name);
-		nodrop_tables.insert(name);
-	}
 
 
-	for (std::map<ulint,std::string>::iterator iter = ddl_tracker.drops.begin();
-		iter != ddl_tracker.drops.end(); iter++) {
-		ulint id = iter->first;
-		std::string name = iter->second;
-		if (tables_in_backup.find(id) != tables_in_backup.end()
-			&& name_to_id.find(name) != name_to_id.end()
-			&& nodrop_tables.find(iter->second) == nodrop_tables.end()) {
-			// Create an empty .del file, making files for delete.
-			backup_file_printf((iter->second + ".del").c_str(), "%s", "");
-		}
-	}
-
-	for (std::set<std::string>::iterator iter = spaces_to_load.begin();
-		iter != spaces_to_load.end(); iter++) {
-		
-		const char *space_name = iter->c_str();
-		if (check_if_skip_table(space_name))
-			continue;
-		std::string name(*iter);
-		bool is_remote = access((name + ".ibd").c_str(), R_OK) != 0;
-		const char *extension = is_remote ? ".isl" : ".ibd";
-		name.append(extension);
-		char buf[FN_REFLEN];
-		strncpy(buf, name.c_str(), sizeof(buf));
-		const char *dbname = buf;
-		char *p = strchr(buf, '/');
-		ut_a(p);
-		*p = 0;
-		const char *tablename = p + 1;
-		xb_load_single_table_tablespace(dbname, tablename, is_remote);
-	}
-
+	/* Rescan datadir, load tablespaces that were created during backup.*/
+	enumerate_ibd_files(xb_load_single_table_tablespace);
 	it = datafiles_iter_new(fil_system);
 	if (!it)
 		return;
 
+	// Find out which tablespaces were newly created, recreated, or renamed while
+	// backup was running.
+
 	while (fil_node_t *node = datafiles_iter_next(it)) {
-		fil_space_t * space = node->space;
+		fil_space_t *space = node->space;
 		if (!fil_is_user_tablespace_id(space->id))
 			continue;
-		std::string dest_name(node->space->name);
+		if (check_if_skip_table(space->name))
+			continue;
+
+		if (tables_in_backup.find(space->id) == tables_in_backup.end()) {
+			new_tables.push_back(node);
+		}
+		else if (tables_in_backup[space->id] != space->name) {
+			// Same space id after backup, but different name
+			// means there was a RENAME during backup.
+			if (ddl_tracker.optimized_ddl.find(space->id) != ddl_tracker.optimized_ddl.end()) {
+				// We need to copy the full tablespace, due to "optimized DDL"
+				dropped_tables.push_back(tables_in_backup[space->id]);
+				new_tables.push_back(node);
+			}
+			else {
+				renamed_tables[tables_in_backup[space->id]] = space->name;
+			}
+		}
+		else if (ddl_tracker.optimized_ddl.find(space->id) != ddl_tracker.optimized_ddl.end()) {
+			new_tables.push_back(node);
+		}
+	}
+	datafiles_iter_free(it);
+
+	// Find tablespaces that were dropped while backup was running.
+	for (std::map<ulint, std::string>::iterator iter = tables_in_backup.begin();
+		iter != tables_in_backup.end(); ++iter) {
+
+		ulint id = iter->first;
+		if (!id)
+			continue;
+
+		const char *name = iter->second.c_str();
+
+		mutex_enter(&fil_system->mutex);
+		fil_space_t *space = fil_space_get_by_id(id);
+		if (!space) {
+			space = fil_space_get_by_name(name);
+		}
+		mutex_exit(&fil_system->mutex);
+
+		if (!space)
+			dropped_tables.push_back(name);
+	}
+	// Copy new tablespaces
+	for (size_t i = 0; i < new_tables.size(); i++) {
+		fil_node_t *n = new_tables[i];
+		std::string dest_name(n->space->name);
 		dest_name.append(".new");
-		xtrabackup_copy_datafile(node, 0, dest_name.c_str()/*, do_full_copy ? ULONGLONG_MAX:UNIV_PAGE_SIZE */);
+#if 0
+		bool do_full_copy = ddl_tracker.optimized_ddl.find(n->space->id) != ddl_tracker.optimized_ddl.end();
+		if (do_full_copy) {
+			msg(
+				"Performing a full copy of the tablespace %s, because optimized (without redo logging) DDL operation"
+				"ran during backup. You can use set innodb_log_optimize_ddl=OFF to improve backup performance"
+				"in the future.\n",
+				n->space->name);
+		}
+#endif
+		xtrabackup_copy_datafile(n, 0, dest_name.c_str()/*, do_full_copy ? ULONGLONG_MAX:UNIV_PAGE_SIZE */);
+	}
+
+	// mark tablespaces for rename (--prepare will handle it correctly)
+	for (std::map<std::string, std::string>::iterator iter = renamed_tables.begin();
+		iter != renamed_tables.end(); ++iter) {
+		std::string old_name = iter->first;
+		std::string new_name = iter->second;
+		backup_file_printf((old_name + ".ren").c_str(), "%s", (new_name + ".ibd").c_str());
+	}
+
+	// mark tablespaces for drop.
+	for (size_t i = 0; i < dropped_tables.size(); i++) {
+		backup_file_printf((dropped_tables[i] + ".del").c_str(), "%s", "");
 	}
 }
 
@@ -5060,7 +5047,7 @@ typedef ibool (*handle_datadir_entry_func_t)(
 	const char*	file_name,		/*!<in: file name with suffix */
 	void*		arg);			/*!<in: caller-provided data */
 
-static ibool prepare_new_tablespaces(
+static ibool prepare_new_tables(
 	const char*	data_home_dir,		/*!<in: path to datadir */
 	const char*	db_name,		/*!<in: database name */
 	const char*	file_name,		/*!<in: file name with suffix */
@@ -5423,7 +5410,7 @@ xtrabackup_prepare_func(char** argv)
 	msg("mariabackup: cd to %s\n", xtrabackup_real_target_dir);
 
 	fil_path_to_mysql_datadir = ".";
-	xb_process_datadir("./", ".new", prepare_new_tablespaces);
+	xb_process_datadir("./", ".new", prepare_new_tables);
 	
 	enumerate_ibd_files(fix_ddl_in_prepare);
 
