@@ -246,6 +246,33 @@ IF(HAVE_IB_ATOMIC_PTHREAD_T_GCC)
   ADD_DEFINITIONS(-DHAVE_IB_ATOMIC_PTHREAD_T_GCC=1)
 ENDIF()
 
+CHECK_C_SOURCE(
+"
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdlib.h>
+int main() {
+  char filename[] = "/tmp/mytemp.XXXXXX";
+  int fd = mkstemp(filename);
+  if (fd != -1) {
+    int fd2=fcntl(fd, F_DUPFD_CLOEXEC, 0);
+    if (fd2 != -1) {
+      close(fd2);
+      close(fd);
+      unlink(filename);
+      return (0);
+    }
+    close (fd);
+    unlink(filename);
+  }
+  return (1);
+}"
+HAVE_IB_F_DUPFD_CLOEXEC)
+
+IF (HAVE_IB_F_DUPFD_CLOEXEC)
+  ADD_DEFINITIONS(-DHAVE_IB_F_DUPFD_CLOEXEC=1)
+ENDIF()
+
 CHECK_C_SOURCE_COMPILES("struct t1{ int a; char *b; }; struct t1 c= { .a=1, .b=0 }; main() { }" HAVE_C99_INITIALIZERS)
 
 ENDIF(NOT MSVC)

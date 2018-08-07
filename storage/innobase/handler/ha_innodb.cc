@@ -2414,7 +2414,7 @@ innobase_mysql_tmpfile(
 			}
 		}
 #else
-#ifdef F_DUPFD_CLOEXEC
+#if defined(F_DUPFD_CLOEXEC) && defined(HAVE_IB_F_DUPFD_CLOEXEC)
 		fd2 = fcntl(fd, F_DUPFD_CLOEXEC, 0);
 #else
 		fd2 = dup(fd);
