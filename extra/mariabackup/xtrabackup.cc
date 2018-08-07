@@ -4392,10 +4392,10 @@ FTWRL.  This ensures consistent backup in presence of DDL.
 */
 void backup_fix_ddl(void)
 {
+	std::set<std::string> new_tables;
 	std::set<std::string> dropped_tables;
 	std::map<std::string, std::string> renamed_tables;
 
-	std::set<ulint> ids_in_backup;
 	for (space_id_to_name_t::iterator iter = ddl_tracker.tables_in_backup.begin();
 		iter != ddl_tracker.tables_in_backup.end();
 		iter++) {
@@ -4413,7 +4413,7 @@ void backup_fix_ddl(void)
 
 		if (ddl_tracker.id_to_name.find(id) == ddl_tracker.id_to_name.end()) {
 			if (has_optimized_ddl) {
-				new_tables.push_back(name);
+				new_tables.insert(name);
 			}
 			else {
 				continue;
@@ -4427,7 +4427,7 @@ void backup_fix_ddl(void)
 				/* table was renamed, but we need a full copy
 				of it because of optimized DDL. We emulate a drop/create.*/
 				dropped_tables.insert(name);
-				new_tables.push_back(new_name);
+				new_tables.insert(new_name);
 			} else {
 				/* Renamed, and no optimized DDL*/
 				renamed_tables[name] = new_name;
@@ -4435,7 +4435,7 @@ void backup_fix_ddl(void)
 		} else if (has_optimized_ddl) {
 			/* Table was recreated, or optimized DDL ran.
 			In both cases we need a full copy in the backup.*/
-			new_tables.push_back(name);
+			new_tables.insert(name);
 		}
 	}
 
@@ -4454,7 +4454,7 @@ void backup_fix_ddl(void)
 
 		if (ddl_tracker.drops.find(id) == ddl_tracker.drops.end()) {
 			dropped_tables.erase(name);
-			new_tables.push_back(name);
+			new_tables.insert(name);
 		}
 	}
 
@@ -4492,7 +4492,7 @@ void backup_fix_ddl(void)
 	}
 
 
-	for (std::vector<std::string>::iterator iter = new_tables.begin();
+	for (std::set<std::string>::iterator iter = new_tables.begin();
 		iter != new_tables.end(); iter++) {
 		const char *space_name = iter->c_str();
 		if (check_if_skip_table(space_name))
