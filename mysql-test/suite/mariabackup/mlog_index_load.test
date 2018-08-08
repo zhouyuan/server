@@ -1,3 +1,4 @@
+--source include/have_debug.inc
 
 CREATE TABLE t1(i INT PRIMARY KEY auto_increment, a int) ENGINE INNODB;
 INSERT INTO t1(a) SELECT * from seq_1_to_10000;

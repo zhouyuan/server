@@ -4505,6 +4505,10 @@ void backup_fix_ddl(void)
 		strncpy(buf, name.c_str(), sizeof(buf));
 		const char *dbname = buf;
 		char *p = strchr(buf, '/');
+		if (p == 0) {
+			msg("Unexpected tablespace %s filename %s\n", space_name, name.c_str());
+			ut_a(0);
+		}
 		ut_a(p);
 		*p = 0;
 		const char *tablename = p + 1;
