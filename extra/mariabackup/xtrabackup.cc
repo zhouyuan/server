@@ -4415,9 +4415,7 @@ void backup_fix_ddl(void)
 			if (has_optimized_ddl) {
 				new_tables.insert(name);
 			}
-			else {
-				continue;
-			}
+			continue;
 		}
 
 		/* tablespace was affected by DDL. */
