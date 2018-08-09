@@ -593,9 +593,6 @@ void backup_file_op(ulint space_id, const byte* flags,
 	const byte* name, ulint len,
 	const byte* new_name, ulint new_len)
 {
-	// TODO : handle incremental
-	if (xtrabackup_incremental)
-		return;
 
 	ut_ad(!flags || !new_name);
 	ut_ad(name);
@@ -4461,7 +4458,7 @@ void backup_fix_ddl(void)
 		iter != renamed_tables.end(); ++iter) {
 		const std::string old_name = iter->first;
 		std::string new_name = iter->second;
-		backup_file_printf((old_name + ".ren").c_str(), "%s", (new_name + ".ibd").c_str());
+		backup_file_printf((old_name + ".ren").c_str(), "%s", new_name.c_str());
 	}
 
 	// Mark tablespaces for drop
@@ -5055,14 +5052,17 @@ std::string change_extension(std::string filename, std::string new_ext) {
 }
 
 
-static void rename_file(std::string from, std::string to) {
-	msg("Renaming %s to %s\n", from.c_str(), to.c_str());
-	if (my_rename(from.c_str(), to.c_str(), MY_WME)) {
-		msg("Cannot rename %s->%s errno %d", from.c_str(), to.c_str(), errno);
+static void rename_file(const char *from,const char *to) {
+	msg("Renaming %s to %s\n", from, to);
+	if (my_rename(from, to, MY_WME)) {
+		msg("Cannot rename %s to %s errno %d", from, to, errno);
 		exit(EXIT_FAILURE);
 	}
 }
 
+static void rename_file(const std::string& from, const std::string &to) {
+	rename_file(from.c_str(), to.c_str());
+}
 /************************************************************************
 Callback to handle datadir entry. Function of this type will be called
 for each entry which matches the mask by xb_process_datadir.
@@ -5074,23 +5074,34 @@ typedef ibool (*handle_datadir_entry_func_t)(
 	const char*	file_name,		/*!<in: file name with suffix */
 	void*		arg);			/*!<in: caller-provided data */
 
-static ibool prepare_new_tables(
+/** Rename, and replace destination file, if exists */
+static void rename_force(const char *from, const char *to) {
+	if (access(to, R_OK) == 0) {
+		msg("Removing %s\n", to);
+		if (my_delete(to, MYF(MY_WME))) {
+			msg("Can't remove %s, errno %d", to, errno);
+			exit(EXIT_FAILURE);
+		}
+	}
+	rename_file(from,to);
+}
+
+/* During prepare phase, rename ".new" files , that were created in backup_fix_ddl(),
+  to ".ibd".*/
+static ibool prepare_handle_new_files(
 	const char*	data_home_dir,		/*!<in: path to datadir */
 	const char*	db_name,		/*!<in: database name */
 	const char*	file_name,		/*!<in: file name with suffix */
 	void *)
 {
-	std::string new_file =  std::string(db_name) + '/' + file_name;
 
-	std::string ibd_file = change_extension(new_file, "ibd");
-	if (access(ibd_file.c_str(), R_OK) == 0) {
-		msg("Removing %s\n", ibd_file.c_str());
-		if (my_delete(ibd_file.c_str(), MYF(MY_WME))) {
-			msg("Can't remove %s, errno %d", ibd_file.c_str(), errno);
-			exit(EXIT_FAILURE);
-		}
-	}
-	rename_file(new_file, ibd_file);
+	std::string src_path = std::string(data_home_dir) + '/' + std::string(db_name) + '/' + file_name;
+	std::string dest_path = src_path;
+
+	size_t index = dest_path.find(".new");
+	DBUG_ASSERT(index != std::string::npos);
+	dest_path.replace(index, 4, ".ibd");
+	rename_force(src_path.c_str(),dest_path.c_str());
 	return TRUE;
 }
 
@@ -5299,97 +5310,101 @@ store_binlog_info(const char* filename, const char* name, ulonglong pos)
 	return(true);
 }
 
-
-
+/** Check if file exists*/
 static bool file_exists(std::string name)
 {
 	return access(name.c_str(), R_OK) == 0 ;
 }
-/*
-  For the case tablespace need to be renamed,
-  backup places a file with extension .ren next to .ibd file
 
-  The content of the ".ren" file is the new file name.
-
-  This function does the actual rename operation.
-  (and removes .ren file)
-
-
-  NOTE:  We also need to take care of subtely known as 
-  curcular renames.
-
-  Example: during backup, the following code runs
-  RENAME TABLE A to C, B to A, C to B
-
-  Then we can have these files in the backup
-  A.ibd
-  A.ren (content B.ibd)
-  B.ibd
-  B.ren (content A.ibd)
-
-  if we rename of A.ibd, we cannot rename it directly to
-  B.ibd, since it exists in backup and must not be overwritten.
-
-  Thus, we first rename B.ibd to temporary B.ibt
-  rename A.ibd to B.ibd, and then call this function recursively
-  for B.ibt
-*/
-static void fix_rename(const char *ibd)
-{
-	std::string ren_file(change_extension(ibd,"ren"));
-
-	char target_ibd[FN_REFLEN + 1];
-	FILE *f = fopen(ren_file.c_str(), "r");
+/** Read file content into STL string */
+static std::string read_file_as_string(const std::string file) {
+	char content[FN_REFLEN];
+	FILE *f = fopen(file.c_str(), "r");
 	if (!f) {
-		msg("Can not open %s", ren_file.c_str());
+		msg("Can not open %s\n", file.c_str());
 	}
-	size_t len = fread(target_ibd, 1, FN_REFLEN, f);
-	target_ibd[len] = 0;
+	size_t len = fread(content, 1, FN_REFLEN, f);
 	fclose(f);
+	return std::string(content, len);
+}
 
-	std::string tmp_ibt;
-	if (access(target_ibd, R_OK) == 0) {
-		std::string target_ren(change_extension(target_ibd, "ren"));
-		if (!file_exists(target_ren)) {
-			msg("Expected file %s is not found\n", target_ren.c_str());
-			exit(EXIT_FAILURE);
-		}
-		tmp_ibt = change_extension(target_ibd, "ibt");
-		rename_file(target_ibd, tmp_ibt);
-	}
-
-	rename_file(std::string(ibd), target_ibd);
-	unlink(ren_file.c_str());
-	if (!tmp_ibt.empty()) {
-		fix_rename(tmp_ibt.c_str());
+/** Delete file- Provide verbose diagnostics and exit, if operation fails. */
+static void delete_file(const std::string& file, bool if_exists = false) {
+	if (if_exists && !file_exists(file))
+		return;
+	if (my_delete(file.c_str(), MYF(MY_WME))) {
+		msg("Can't remove %s, errno %d", file.c_str(), errno);
+		exit(EXIT_FAILURE);
 	}
 }
 
-/*
-  At the start of prepare, do some DDL fixups.
-  Renaming, replacing, or remove files, if *.ren,*.new or *.del markers are present
-  These markers are created during copy_tablespaces_created_during_backup function.
+/**
+Rename tablespace during prepare.
+Backup in its end phase may generate some .ren files, recording
+tablespaces that should be renamed in --prepare.
 */
-static void fix_ddl_in_prepare(const char *dbname, const char *tablename, bool)
-{
-	char filename[FN_REFLEN];
-	char ibd[FN_REFLEN];
-	snprintf(ibd, sizeof(filename), "%s/%s", dbname, tablename);
-	strncpy(filename, ibd, sizeof(filename));
-
-	if (file_exists(change_extension(ibd,"del"))) {
-		msg("Fix DDL during prepare - remove %s ", ibd);
-		if (unlink(ibd)) {
-			msg("unlink failed (errno %d)\n", errno);
-			exit(EXIT_FAILURE);
+static void rename_table_in_prepare(const std::string &datadir, const std::string& from , const std::string& to,
+	const char *extension=0) {
+	if (!extension) {
+		static const char *extensions_nonincremental[] = { ".ibd", 0 };
+		static const char *extensions_incremental[] = { ".ibd.delta", ".ibd.meta", 0 };
+		const char **extensions = xtrabackup_incremental_dir ? 
+			extensions_incremental : extensions_nonincremental;
+		for (size_t i = 0; extensions[i]; i++) {
+			rename_table_in_prepare(datadir, from, to, extensions[i]);
 		}
 		return;
 	}
-
-	if (file_exists(change_extension(ibd, "ren"))){
-		fix_rename(ibd);
-		return;
+	std::string src = std::string(datadir) + "/" + from + extension;
+	std::string dest = std::string(datadir) + "/" + to + extension;
+	std::string ren2, tmp;
+	if (file_exists(dest)) {
+		ren2= std::string(datadir) + "/" + to + ".ren";
+		if (!file_exists(ren2)) {
+			msg("ERROR : File %s was not found, but expected during rename processing\n", ren2.c_str());
+			ut_a(0);
+		}
+		tmp = to + "#";
+		rename_table_in_prepare(datadir, to, tmp);
 	}
+	rename_file(src, dest);
+	if (ren2.size()) {
+		// Make sure the temp. renamed file is processed.
+		std::string to2 = read_file_as_string(ren2);
+		rename_table_in_prepare(datadir, tmp, to2);
+		delete_file(ren2);
+	}
+}
+
+static ibool prepare_handle_ren_files(const char *datadir, const char *db, const char *filename, void *) {
+
+	std::string ren_file = std::string(datadir) + "/" + db + "/" + filename;
+	if (!file_exists(ren_file))
+		return TRUE;
+
+	std::string to = read_file_as_string(ren_file);
+	std::string source_space_name = std::string(db) + "/" + filename;
+	source_space_name.resize(source_space_name.size() - 4); // remove extension
+
+	rename_table_in_prepare(datadir, source_space_name.c_str(), to.c_str());
+	delete_file(ren_file);
+	return TRUE;
+}
+
+/* Remove tablespaces during backup, based on */
+static ibool prepare_handle_del_files(const char *datadir, const char *db, const char *filename, void *) {
+	std::string del_file = std::string(datadir) + "/" + db + "/" + filename;
+	std::string path(del_file);
+	path.resize(path.size() - 4); // remove extension;
+	if (xtrabackup_incremental) {
+		delete_file(path + ".ibd.delta", true);
+		delete_file(path + ".ibd.meta", true);
+	}
+	else {
+		delete_file(path + ".ibd", true);
+	}
+	delete_file(del_file);
+	return TRUE;
 }
 
 /** Implement --prepare
@@ -5410,9 +5425,19 @@ xtrabackup_prepare_func(char** argv)
 	msg("mariabackup: cd to %s\n", xtrabackup_real_target_dir);
 
 	fil_path_to_mysql_datadir = ".";
-	xb_process_datadir("./", ".new", prepare_new_tables);
-	
-	enumerate_ibd_files(fix_ddl_in_prepare);
+
+	if (xtrabackup_incremental_dir) {
+		xb_process_datadir(xtrabackup_incremental_dir, ".new.meta", prepare_handle_new_files);
+		xb_process_datadir(xtrabackup_incremental_dir, ".new.delta", prepare_handle_new_files);
+	}
+	else {
+		xb_process_datadir(".", ".new", prepare_handle_new_files);
+	}
+	xb_process_datadir(xtrabackup_incremental_dir? xtrabackup_incremental_dir:".",
+		".ren", prepare_handle_ren_files);
+	xb_process_datadir(xtrabackup_incremental_dir ? xtrabackup_incremental_dir : ".",
+		".del", prepare_handle_del_files);
+
 
 	int argc; for (argc = 0; argv[argc]; argc++) {}
 	encryption_plugin_prepare_init(argc, argv);
