@@ -1,5 +1,5 @@
 --source include/have_debug.inc
-let $targetdir=$MYSQLTEST_VARDIR/backup;
+let $targetdir=$MYSQLTEST_VARDIR/tmp/backup;
 mkdir $targetdir;
 
 # this will table and populate it, after backup has list of tables to be copied
