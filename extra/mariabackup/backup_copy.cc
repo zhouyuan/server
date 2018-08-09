@@ -1419,7 +1419,7 @@ bool backup_start()
 		rocksdb_create_checkpoint();
 	}
 
-	msg_ts("Waiting for log copy thread to read lsn %llu\n", server_lsn_after_lock);
+	msg_ts("Waiting for log copy thread to read lsn %llu\n", (ulonglong)server_lsn_after_lock);
 	backup_wait_for_lsn(server_lsn_after_lock);
 	backup_fix_ddl();
 
