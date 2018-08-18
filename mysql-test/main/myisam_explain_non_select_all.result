@@ -28,9 +28,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` where `test`.`t1`.`a` < 10
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	2
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	2
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	2
@@ -70,9 +70,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` where `test`.`t1`.`a` < 10
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	2
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	2
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	2
@@ -113,9 +113,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` where `test`.`t1`.`a` = 1
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	2
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	2
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	2
@@ -160,9 +160,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a`,`test`.`t2`.`b` AS `b` from `test`.`t1` join `test`.`t2` where `test`.`t1`.`a` = 1
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	4
@@ -208,9 +208,9 @@ Warnings:
 Note	1003	select `test`.`t11`.`a` AS `a`,`test`.`t2`.`b` AS `b` from `test`.`t1` `t11` join `test`.`t2` where `test`.`t11`.`a` = 1
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	4
@@ -256,9 +256,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` semi join (`test`.`t2`) where `test`.`t2`.`b` < 3
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	5
@@ -305,9 +305,9 @@ Note	1276	Field or reference 'test.t1.a' of SELECT #2 was resolved in SELECT #1
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` semi join (`test`.`t2`) where `test`.`t2`.`b` = `test`.`t1`.`a` and `test`.`t1`.`a` < 3
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	4
@@ -357,9 +357,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a`,`test`.`t2`.`b` AS `b` from `test`.`t1` semi join (`test`.`t2`) join `test`.`t2` where `test`.`t2`.`b` < 3
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	7
@@ -406,9 +406,9 @@ Warnings:
 Note	1003	select `test`.`t11`.`a` AS `a`,`test`.`t2`.`b` AS `b` from `test`.`t1` `t11` join `test`.`t2`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	4
@@ -508,9 +508,9 @@ Warnings:
 Note	1003	select `test`.`t11`.`a` AS `a`,`test`.`t2`.`b` AS `b` from `test`.`t1` `t11` join `test`.`t2` where `test`.`t11`.`a` > 1
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	4
@@ -550,9 +550,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` where `test`.`t1`.`a` > 1 limit 1
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	2
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	2
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	2
@@ -593,9 +593,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` where 0
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	2
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	2
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	2
@@ -633,9 +633,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` where 0
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	2
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	2
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	2
@@ -673,10 +673,9 @@ Warnings:
 Note	1003	select 3 AS `a`,3 AS `b` from `test`.`t1` where 1
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
-Handler_read_key	1
+Handler_read_key	6
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	6
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	6
@@ -715,9 +714,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a`,`test`.`t1`.`b` AS `b` from `test`.`t1` where `test`.`t1`.`a` < 3
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	5
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	5
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	6
@@ -793,9 +792,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` where `test`.`t1`.`a` > 0 order by `test`.`t1`.`a`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	3
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	3
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	4
@@ -836,9 +835,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` where @a:=`test`.`t1`.`a` order by `test`.`t1`.`a` limit 1
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	3
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	3
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_first	1
@@ -880,9 +879,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a`,`test`.`t1`.`b` AS `b`,`test`.`t1`.`c` AS `c` from `test`.`t1` order by `test`.`t1`.`a`,`test`.`t1`.`b` limit 1
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	7
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	7
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	7
@@ -939,9 +938,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a1` AS `a1`,`test`.`t1`.`b1` AS `b1`,`test`.`t2`.`a2` AS `a2`,`test`.`t2`.`b2` AS `b2`,`test`.`t3`.`a3` AS `a3`,`test`.`t3`.`b3` AS `b3` from `test`.`t1` join `test`.`t2` join `test`.`t3` where `test`.`t2`.`a2` = `test`.`t1`.`a1` and `test`.`t3`.`a3` = `test`.`t2`.`b2` and `test`.`t3`.`b3` = `test`.`t1`.`b1`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	13
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	13
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	19
@@ -990,9 +989,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` semi join (`test`.`t2`) where 1
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	7
@@ -1038,9 +1037,9 @@ Warnings:
 Note	1003	/* select#1 */ select `test`.`t1`.`a1` AS `a1` from `test`.`t1` where <expr_cache><`test`.`t1`.`a1`>(<in_optimizer>(`test`.`t1`.`a1`,<exists>(/* select#2 */ select `test`.`t2`.`a2` from `test`.`t2` where `test`.`t2`.`a2` > 2 and <cache>(`test`.`t1`.`a1`) = `test`.`t2`.`a2`)))
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	9
@@ -1083,9 +1082,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a1` AS `a1` from `test`.`t1` semi join (`test`.`t2`) where `test`.`t2`.`a2` > 2 and `test`.`t1`.`a1` = `test`.`t2`.`a2`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	4
@@ -1125,9 +1124,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`i` AS `i`,`test`.`t1`.`j` AS `j` from `test`.`t1`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	3
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	3
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	3
@@ -1167,9 +1166,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`i` AS `i`,`test`.`t1`.`j` AS `j` from `test`.`t1`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	3
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	3
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	3
@@ -1213,9 +1212,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t2`.`c` AS `c`,`test`.`t2`.`d` AS `d` from `test`.`t2` where `test`.`t2`.`b` = 10 order by `test`.`t2`.`a`,`test`.`t2`.`c` limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	8
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	8
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_first	1
@@ -1259,9 +1258,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`i` AS `i` from `test`.`t1`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	2
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	2
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	2
@@ -1303,9 +1302,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`i` AS `i` from `test`.`t1`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	2
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	2
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	2
@@ -1394,9 +1393,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a`,`test`.`t1`.`i` AS `i` from `test`.`t1` where `test`.`t1`.`i` > 10 and `test`.`t1`.`i` <= 18 order by `test`.`t1`.`i` limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	5
@@ -1439,9 +1438,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a`,`test`.`t1`.`i` AS `i` from `test`.`t1` where `test`.`t1`.`i` > 10 and `test`.`t1`.`i` <= 18 order by `test`.`t1`.`i` limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	4
@@ -1492,9 +1491,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t2`.`c` AS `c`,`test`.`t2`.`d` AS `d` from `test`.`t2` where `test`.`t2`.`b` = 10 order by `test`.`t2`.`a`,`test`.`t2`.`c` limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	8
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	8
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	8
@@ -1546,9 +1545,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t2`.`c` AS `c`,`test`.`t2`.`d` AS `d` from `test`.`t2` where `test`.`t2`.`b` = 10 order by `test`.`t2`.`a`,`test`.`t2`.`c` limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	8
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	8
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_first	1
@@ -1595,9 +1594,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t2`.`c` AS `c`,`test`.`t2`.`d` AS `d` from `test`.`t2` where `test`.`t2`.`b` = 10 order by `test`.`t2`.`a`,`test`.`t2`.`c` limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	8
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	8
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	8
@@ -1649,9 +1648,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t2`.`c` AS `c`,`test`.`t2`.`d` AS `d` from `test`.`t2` where `test`.`t2`.`b` = 10 order by `test`.`t2`.`a`,`test`.`t2`.`c` limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	8
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	8
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	8
@@ -1704,9 +1703,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`i` AS `i`,`test`.`t2`.`key1` AS `key1`,`test`.`t2`.`key2` AS `key2` from `test`.`t2` where `test`.`t2`.`key1` < 13 or `test`.`t2`.`key2` < 14 order by `test`.`t2`.`key1`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	6
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	6
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	8
@@ -1757,9 +1756,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`i` AS `i` from `test`.`t2` where `test`.`t2`.`i` > 10 and `test`.`t2`.`i` <= 18 order by `test`.`t2`.`i` desc limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	5
@@ -1804,9 +1803,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t2`.`c` AS `c` from `test`.`t2` order by `test`.`t2`.`a`,`test`.`t2`.`b` desc limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	6
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	6
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	6
@@ -1858,9 +1857,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t2`.`c` AS `c` from `test`.`t2` order by `test`.`t2`.`a` desc,`test`.`t2`.`b` desc limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	6
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	6
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	6
@@ -1906,9 +1905,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`i` AS `i` from `test`.`t2` where `test`.`t2`.`i` > 10 and `test`.`t2`.`i` <= 18 order by `test`.`t2`.`i` limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	5
@@ -1953,9 +1952,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`i` AS `i` from `test`.`t2` where `test`.`t2`.`i` > 10 and `test`.`t2`.`i` <= 18 order by `test`.`t2`.`i` limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	4
@@ -2005,9 +2004,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t2`.`c` AS `c`,`test`.`t2`.`d` AS `d` from `test`.`t2` where `test`.`t2`.`b` = 10 order by `test`.`t2`.`a`,`test`.`t2`.`c` limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	8
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	8
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	8
@@ -2058,9 +2057,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t2`.`c` AS `c`,`test`.`t2`.`d` AS `d` from `test`.`t2` where `test`.`t2`.`b` = 10 order by `test`.`t2`.`a`,`test`.`t2`.`c` limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	8
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	8
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_first	1
@@ -2106,9 +2105,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t2`.`c` AS `c`,`test`.`t2`.`d` AS `d` from `test`.`t2` where `test`.`t2`.`b` = 10 order by `test`.`t2`.`a`,`test`.`t2`.`c` limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	8
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	8
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	8
@@ -2158,9 +2157,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t2`.`c` AS `c`,`test`.`t2`.`d` AS `d` from `test`.`t2` where `test`.`t2`.`b` = 10 order by `test`.`t2`.`a`,`test`.`t2`.`c` limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	8
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	8
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	8
@@ -2211,9 +2210,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`i` AS `i`,`test`.`t2`.`key1` AS `key1`,`test`.`t2`.`key2` AS `key2` from `test`.`t2` where `test`.`t2`.`key1` < 13 or `test`.`t2`.`key2` < 14 order by `test`.`t2`.`key1`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	6
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	6
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	8
@@ -2263,9 +2262,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`i` AS `i` from `test`.`t2` where `test`.`t2`.`i` > 10 and `test`.`t2`.`i` <= 18 order by `test`.`t2`.`i` desc limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	5
@@ -2310,9 +2309,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t2`.`c` AS `c` from `test`.`t2` order by `test`.`t2`.`a`,`test`.`t2`.`b` desc limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	6
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	6
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	6
@@ -2363,9 +2362,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t2`.`c` AS `c` from `test`.`t2` order by `test`.`t2`.`a` desc,`test`.`t2`.`b` desc limit 5
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	6
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	6
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	6
@@ -2413,9 +2412,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`pk` AS `pk`,`test`.`t1`.`c1_idx` AS `c1_idx`,`test`.`t1`.`c2` AS `c2` from `test`.`t1` where `test`.`t1`.`c1_idx` = 'y' order by `test`.`t1`.`pk` desc limit 2
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	6
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	6
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	7
@@ -2459,9 +2458,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`pk` AS `pk`,`test`.`t1`.`c1_idx` AS `c1_idx`,`test`.`t1`.`c2` AS `c2` from `test`.`t1` where `test`.`t1`.`c1_idx` = 'y' order by `test`.`t1`.`pk` desc limit 2
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	6
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	6
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	7
@@ -2507,9 +2506,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` where `test`.`t1`.`a` > 34
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	3
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	3
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	4
@@ -2646,9 +2645,9 @@ Note	1276	Field or reference 'test.t1.f1' of SELECT #2 was resolved in SELECT #1
 Note	1003	/* select#1 */ select <expr_cache><`test`.`t1`.`f1`>((/* select#2 */ select max(`test`.`t2`.`f4`) from `test`.`t2` where `test`.`t2`.`f3` = `test`.`t1`.`f1`)) AS `(SELECT MAX(t2.f4) FROM t2 WHERE t2.f3=t1.f1)` from `test`.`t1`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	7
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	7
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	9
@@ -2714,9 +2713,9 @@ Warnings:
 Note	1003	select `test`.`t11`.`a` AS `a`,`test`.`t12`.`a` AS `b` from `test`.`t1` `t11` join `test`.`t1` `t12` where `test`.`t11`.`a` > 0
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	2
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	2
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	2
@@ -2758,9 +2757,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a`,`test`.`t11`.`a` AS `a`,`test`.`t12`.`a` AS `b` from `test`.`t1` join `test`.`t1` `t11` join `test`.`t1` `t12` where `test`.`t11`.`a` = `test`.`t1`.`a`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	2
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	2
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	2
@@ -2804,9 +2803,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` where `test`.`t1`.`a` < 4
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	3
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	3
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_first	1
@@ -2856,9 +2855,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`x` AS `x`,`test`.`t1`.`a` AS `a`,`test`.`t1`.`b` + 1 AS `c` from `test`.`t2` join `test`.`t1` where `test`.`t1`.`a` = `test`.`t2`.`x`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	6
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	6
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	10
@@ -2907,9 +2906,9 @@ Warnings:
 Note	1003	select `test`.`t2`.`x` AS `x`,`test`.`t1`.`a` AS `a`,`test`.`t1`.`b` + 1 AS `c` from `test`.`t2` join `test`.`t1` where `test`.`t1`.`a` = `test`.`t2`.`x`
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	6
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	6
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	10
@@ -3049,9 +3048,9 @@ Warnings:
 Note	1003	/* select#1 */ select `test`.`t1`.`a` AS `a` from `test`.`t1` semi join ((/* select#3 */ select `test`.`t2`.`b` AS `b` from `test`.`t2` order by `test`.`t2`.`b` limit 2,2) `x`) where 1
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	7
@@ -3105,9 +3104,9 @@ Warnings:
 Note	1003	/* select#1 */ select `test`.`t1`.`a` AS `a`,`test`.`t2`.`b` AS `b` from `test`.`t1` semi join ((/* select#3 */ select `test`.`t2`.`b` AS `b` from `test`.`t2` order by `test`.`t2`.`b` limit 2,2) `x`) join `test`.`t2` where 1
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	7
@@ -3162,9 +3161,9 @@ Warnings:
 Note	1003	/* select#1 */ select `test`.`t1`.`a` AS `a`,`test`.`t2`.`b` AS `b` from `test`.`t1` semi join ((/* select#4 */ select `test`.`t2`.`b` AS `b` from `test`.`t2` order by `test`.`t2`.`b` limit 2,2) `x`) join `test`.`t2` where 1
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	4
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	4
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	7
@@ -3235,9 +3234,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `t1` from `test`.`t1` where `test`.`t1`.`a` > 10
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	3
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	3
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_first	1
@@ -3273,9 +3272,9 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `t1` from `test`.`t1` where `test`.`t1`.`a` > 10 order by `test`.`t1`.`a` + 20
 # Status of EXPLAIN EXTENDED "equivalent" SELECT query execution
 Variable_name	Value
+Handler_read_key	3
 Warnings:
 Warning	1287	'<select expression> INTO <destination>;' is deprecated and will be removed in a future release. Please use 'SELECT <select list> INTO <destination> FROM...' instead
-Handler_read_key	3
 # Status of "equivalent" SELECT query execution:
 Variable_name	Value
 Handler_read_key	3
