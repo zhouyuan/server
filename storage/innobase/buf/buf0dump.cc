@@ -44,8 +44,8 @@ Created April 08, 2011 Vasil Dimov
 
 #include <algorithm>
 
-#include "mysql/service_wsrep.h" /* wsrep_recovery */
 #include <my_service_manager.h>
+#include "mysql/service_wsrep.h" /* wsrep_recovery */
 
 enum status_severity {
 	STATUS_INFO,
@@ -824,7 +824,7 @@ DECLARE_THREAD(buf_dump_thread)(void*)
 	if (srv_buffer_pool_load_at_startup) {
 
 #ifdef WITH_WSREP
-		if (!wsrep_recovery) {
+		if (!get_wsrep_recovery()) {
 #endif /* WITH_WSREP */
 			buf_load();
 #ifdef WITH_WSREP
@@ -858,7 +858,7 @@ DECLARE_THREAD(buf_dump_thread)(void*)
 				"Dumping of buffer pool not started"
 				" as load was incomplete");
 #ifdef WITH_WSREP
-		} else if (wsrep_recovery) {
+		} else if (get_wsrep_recovery()) {
 #endif /* WITH_WSREP */
 		} else {
 			buf_dump(FALSE/* do complete dump at shutdown */);

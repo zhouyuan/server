@@ -21,6 +21,7 @@
 #endif
 
 #include "mariadb.h"
+#include "my_pthread.h"
 #include "wsrep_utils.h"
 #include "wsrep_mysqld.h"
 
