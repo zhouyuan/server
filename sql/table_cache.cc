@@ -1127,7 +1127,6 @@ bool tdc_remove_table(THD *thd, enum_tdc_remove_table_type remove_type,
       DBUG_ASSERT(table->in_use == thd);
     }
   }
-  DBUG_ASSERT(element->all_tables.is_empty() || remove_type != TDC_RT_REMOVE_ALL);
   mysql_mutex_unlock(&element->LOCK_table_share);
 
   while ((table= purge_tables.pop_front()))
@@ -1159,6 +1158,8 @@ bool tdc_remove_table(THD *thd, enum_tdc_remove_table_type remove_type,
     mysql_mutex_lock(&element->LOCK_table_share);
     while (element->ref_count > my_refs)
       mysql_cond_wait(&element->COND_release, &element->LOCK_table_share);
+    DBUG_ASSERT(element->all_tables.is_empty() ||
+                remove_type != TDC_RT_REMOVE_ALL);
     mysql_mutex_unlock(&element->LOCK_table_share);
   }
 
