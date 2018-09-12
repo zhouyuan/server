@@ -5,21 +5,7 @@ drop table if exists t;
 connection slave;
 show variables like 'tokudb_rpl_%';
 Variable_name	Value
-<<<<<<< HEAD
-tokudb_rpl_check_readonly	ON
-tokudb_rpl_lookup_rows	OFF
-tokudb_rpl_lookup_rows_delay	10000
-tokudb_rpl_unique_checks	OFF
-tokudb_rpl_unique_checks_delay	10000
 connection master;
-||||||| merged common ancestors
-tokudb_rpl_check_readonly	ON
-tokudb_rpl_lookup_rows	OFF
-tokudb_rpl_lookup_rows_delay	10000
-tokudb_rpl_unique_checks	OFF
-tokudb_rpl_unique_checks_delay	10000
-=======
->>>>>>> 10.1
 create table t (a bigint not null, b bigint not null, primary key(a)) engine=tokudb;
 insert into t values (1,0);
 insert into t values (2,0),(3,0);
