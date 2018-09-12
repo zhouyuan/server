@@ -38,8 +38,14 @@ static char wsrep_defaults_file[FN_REFLEN * 2 + 10 + 30 +
                                 sizeof(WSREP_SST_OPT_CONF_SUFFIX) +
                                 sizeof(WSREP_SST_OPT_CONF_EXTRA)] = {0};
 
+const char* wsrep_sst_method          = WSREP_SST_DEFAULT;
+const char* wsrep_sst_receive_address = WSREP_SST_ADDRESS_AUTO;
+const char* wsrep_sst_donor           = "";
+const char* wsrep_sst_auth            = NULL;
+
 // container for real auth string
 static const char* sst_auth_real      = NULL;
+my_bool wsrep_sst_donor_rejects_queries = FALSE;
 
 bool wsrep_sst_method_check (sys_var *self, THD* thd, set_var* var)
 {
@@ -157,7 +163,7 @@ void wsrep_sst_auth_free()
 
 bool wsrep_sst_auth_update (sys_var *self, THD* thd, enum_var_type type)
 {
-    return sst_auth_real_set (wsrep_sst_auth);
+  return sst_auth_real_set (wsrep_sst_auth);
 }
 
 void wsrep_sst_auth_init ()
@@ -172,8 +178,10 @@ bool  wsrep_sst_donor_check (sys_var *self, THD* thd, set_var* var)
 
 bool wsrep_sst_donor_update (sys_var *self, THD* thd, enum_var_type type)
 {
-    return 0;
+  return 0;
 }
+
+static wsrep_uuid_t cluster_uuid = WSREP_UUID_UNDEFINED;
 
 bool wsrep_before_SE()
 {
@@ -304,7 +312,7 @@ bool wsrep_sst_received (wsrep_t*            const wsrep,
   }
 
   if (memcmp(&local_uuid, &uuid, sizeof(wsrep_uuid_t)) ||
-      local_seqno < seqno)
+      local_seqno < seqno || seqno < 0)
   {
     do_update= true;
   }

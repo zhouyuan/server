@@ -74,10 +74,7 @@ const char *wsrep_start_position;
 const char *wsrep_data_home_dir;
 const char *wsrep_dbug_option;
 const char *wsrep_notify_cmd;
-const char *wsrep_sst_method;
-const char *wsrep_sst_receive_address;
-const char *wsrep_sst_donor;
-const char *wsrep_sst_auth;
+
 my_bool wsrep_debug;                            // Enable debug level logging
 my_bool wsrep_convert_LOCK_to_trx;              // Convert locking sessions to trx
 my_bool wsrep_auto_increment_control;           // Control auto increment variables
@@ -89,7 +86,6 @@ my_bool wsrep_log_conflicts;
 my_bool wsrep_load_data_splitting;              // Commit load data every 10K intervals
 my_bool wsrep_slave_UK_checks;                  // Slave thread does UK checks
 my_bool wsrep_slave_FK_checks;                  // Slave thread does FK checks
-my_bool wsrep_sst_donor_rejects_queries;
 my_bool wsrep_restart_slave;                    // Should mysql slave thread be
                                                 // restarted, when node joins back?
 my_bool wsrep_desync;                           // De(re)synchronize the node from the
