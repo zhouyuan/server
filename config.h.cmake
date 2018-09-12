@@ -569,6 +569,8 @@
 #cmakedefine WSREP_PROC_INFO 1
 #endif
 
-// #define __STDC_FORMAT_MACROS
+#if !defined(__STDC_FORMAT_MACROS)
+#define __STDC_FORMAT_MACROS
+#endif  // !defined(__STDC_FORMAT_MACROS)
 
 #endif
