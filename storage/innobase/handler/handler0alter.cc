@@ -579,13 +579,6 @@ ha_innobase::check_if_supported_inplace_alter(
 {
 	DBUG_ENTER("check_if_supported_inplace_alter");
 
-	/* Before 10.2.2 information about virtual columns was not stored in
-	system tables. We need to do a full alter to rebuild proper 10.2.2+
-	metadata with the information about virtual columns */
-	if (table->s->mysql_version < 100202 && table->s->virtual_fields) {
-		DBUG_RETURN(HA_ALTER_INPLACE_NOT_SUPPORTED);
-	}
-
 	if (high_level_read_only) {
 		ha_alter_info->unsupported_reason =
 			innobase_get_err_msg(ER_READ_ONLY_MODE);
@@ -3575,16 +3568,16 @@ prepare_inplace_add_virtual(
 	const TABLE*		altered_table,
 	const TABLE*		table)
 {
+	DBUG_ASSERT(altered_table->s->virtual_fields);
+
 	ha_innobase_inplace_ctx*	ctx;
 	ulint				i = 0;
 	ulint				j = 0;
-	const Create_field*		new_field;
 
 	ctx = static_cast<ha_innobase_inplace_ctx*>
 		(ha_alter_info->handler_ctx);
 
-	ctx->num_to_add_vcol = altered_table->s->fields
-			       + ctx->num_to_drop_vcol - table->s->fields;
+	ctx->num_to_add_vcol = altered_table->s->virtual_fields;
 
 	ctx->add_vcol = static_cast<dict_v_col_t*>(
 		 mem_heap_zalloc(ctx->heap, ctx->num_to_add_vcol
@@ -3596,40 +3589,39 @@ prepare_inplace_add_virtual(
 	List_iterator_fast<Create_field> cf_it(
 		ha_alter_info->alter_info->create_list);
 
-	while ((new_field = (cf_it++)) != NULL) {
-		const Field* field = new_field->field;
-		ulint	old_i;
-
-		for (old_i = 0; table->field[old_i]; old_i++) {
-			const Field* n_field = table->field[old_i];
-			if (field == n_field) {
-				break;
-			}
-		}
-
+	while (const Create_field* new_field = cf_it++) {
 		i++;
 
-		if (table->field[old_i]) {
+		if (!omits_virtual_cols(*table->s)) {
+			const Field* const field = new_field->field;
+			ulint old_i;
+
+			for (old_i = 0; table->field[old_i]; old_i++) {
+				if (field == table->field[old_i]) {
+					goto skip_old_virtual;
+				}
+			}
+
+			goto add_virtual;
+skip_old_virtual:
 			continue;
 		}
 
-		ut_ad(!field);
-
+add_virtual:
 		ulint	col_len;
 		ulint	is_unsigned;
 		ulint	field_type;
 		ulint	charset_no;
 
-		field =  altered_table->field[i - 1];
-
-		ulint	col_type
-				= get_innobase_type_from_mysql_type(
-					&is_unsigned, field);
-
+		const Field* field = altered_table->field[i - 1];
 
 		if (!innobase_is_v_fld(field)) {
 			continue;
 		}
+
+		ulint	col_type
+				= get_innobase_type_from_mysql_type(
+					&is_unsigned, field);
 
 		col_len = field->pack_length();
 		field_type = (ulint) field->type();
@@ -3696,6 +3688,9 @@ prepare_inplace_add_virtual(
 		innodb_base_col_setup(ctx->old_table, field, &ctx->add_vcol[j]);
 		j++;
 	}
+
+	DBUG_ASSERT(j <= ctx->num_to_add_vcol);
+	ctx->num_to_add_vcol = j;
 
 	return(false);
 }
@@ -4371,16 +4366,19 @@ prepare_inplace_alter_table_dict(
 
 	trx_start_if_not_started_xa(ctx->prebuilt->trx, true);
 
-	if (ha_alter_info->handler_flags
-	    & Alter_inplace_info::DROP_VIRTUAL_COLUMN) {
-		if (prepare_inplace_drop_virtual(
-			    ha_alter_info, altered_table, old_table)) {
-			DBUG_RETURN(true);
-		}
+	const bool omitted_virtual = omits_virtual_cols(*old_table->s);
+
+	if ((ha_alter_info->handler_flags
+	     & Alter_inplace_info::DROP_VIRTUAL_COLUMN)
+	    && !omitted_virtual
+	    && prepare_inplace_drop_virtual(ha_alter_info, altered_table,
+					    old_table)) {
+		DBUG_RETURN(true);
 	}
 
-	if (ha_alter_info->handler_flags
-	    & Alter_inplace_info::ADD_VIRTUAL_COLUMN) {
+	if ((ha_alter_info->handler_flags
+	     & Alter_inplace_info::ADD_VIRTUAL_COLUMN)
+	    || (omitted_virtual && altered_table->s->virtual_fields)) {
 		if (prepare_inplace_add_virtual(
 			    ha_alter_info, altered_table, old_table)) {
 			DBUG_RETURN(true);
@@ -6140,15 +6138,19 @@ err_exit:
 
 		}
 
+		const bool omitted_virtual = omits_virtual_cols(*table->s);
+
 		if ((ha_alter_info->handler_flags
 		     & Alter_inplace_info::DROP_VIRTUAL_COLUMN)
+		    && !omitted_virtual
 		    && prepare_inplace_drop_virtual(
 			    ha_alter_info, altered_table, table)) {
 			DBUG_RETURN(true);
 		}
 
-		if ((ha_alter_info->handler_flags
-		     & Alter_inplace_info::ADD_VIRTUAL_COLUMN)
+		if (((ha_alter_info->handler_flags
+		      & Alter_inplace_info::ADD_VIRTUAL_COLUMN)
+		     || (omitted_virtual && altered_table->s->virtual_fields))
 		    && prepare_inplace_add_virtual(
 			    ha_alter_info, altered_table, table)) {
 			DBUG_RETURN(true);

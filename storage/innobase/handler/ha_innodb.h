@@ -487,6 +487,13 @@ protected:
         bool                    m_mysql_has_locked;
 };
 
+/** Check if InnoDB is omitting virtual column metadata for a table.
+Before MariaDB 10.2.2 or MySQL 5.7.8, InnoDB was not aware of the existence
+of virtual columns and did not store any metadata for them.
+@param s	table definition based on .frm file
+@return whether any virtual column definitions in the table are omitted
+inside InnODB */
+bool omits_virtual_cols(const TABLE_SHARE& s);
 
 /* Some accessor functions which the InnoDB plugin needs, but which
 can not be added to mysql/plugin.h as part of the public interface;

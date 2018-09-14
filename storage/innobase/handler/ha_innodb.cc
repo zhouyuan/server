@@ -6171,6 +6171,18 @@ initialize_auto_increment(dict_table_t* table, const Field* field)
 	dict_table_autoinc_unlock(table);
 }
 
+/** Check if InnoDB is omitting virtual column metadata for a table.
+Before MariaDB 10.2.2 or MySQL 5.7.8, InnoDB was not aware of the existence
+of virtual columns and did not store any metadata for them.
+@param s	table definition based on .frm file
+@return whether any virtual column definitions in the table are omitted
+inside InnODB */
+bool omits_virtual_cols(const TABLE_SHARE& s)
+{
+	return s.mysql_version < 100202
+		&& (s.mysql_version < 50708 || s.mysql_version >= 100000);
+}
+
 /** Open an InnoDB table
 @param[in]	name	table name
 @return	error code
