@@ -1,0 +1,152 @@
+#Single user creation will not have server generated binlog
+create or replace user u1;
+create user if not exists u2;
+create user u3 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919";
+create user u4 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919" require CIPHER 'cipher'
+                                                   AND SUBJECT 'subject'
+                                                   AND ISSUER 'issuer'
+                                                   with MAX_UPDATES_PER_HOUR 20;
+select * from mysql.user where user like 'u%';
+Host	User	Password	Select_priv	Insert_priv	Update_priv	Delete_priv	Create_priv	Drop_priv	Reload_priv	Shutdown_priv	Process_priv	File_priv	Grant_priv	References_priv	Index_priv	Alter_priv	Show_db_priv	Super_priv	Create_tmp_table_priv	Lock_tables_priv	Execute_priv	Repl_slave_priv	Repl_client_priv	Create_view_priv	Show_view_priv	Create_routine_priv	Alter_routine_priv	Create_user_priv	Event_priv	Trigger_priv	Create_tablespace_priv	Delete_history_priv	ssl_type	ssl_cipher	x509_issuer	x509_subject	max_questions	max_updates	max_connections	max_user_connections	plugin	authentication_string	password_expired	is_role	default_role	max_statement_time
+%	u1		N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N					0	0	0	0			N	N		0.000000
+%	u2		N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N					0	0	0	0			N	N		0.000000
+%	u3	2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N					0	0	0	0			N	N		0.000000
+%	u4	2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	SPECIFIED	cipher	issuer	subject	0	20	0	0			N	N		0.000000
+include/show_binlog_events.inc
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; create or replace user u1
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; create user if not exists u2
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; create user u3 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919"
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; create user u4 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919" require CIPHER 'cipher'
+                                                   AND SUBJECT 'subject'
+                                                   AND ISSUER 'issuer'
+                                                   with MAX_UPDATES_PER_HOUR 20
+drop user u1, u2, u3, u4;
+RESET MASTER;
+#Roles are not effected
+create role r;
+create or replace role r;
+include/show_binlog_events.inc
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; create role r
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; create or replace role r
+drop role r;
+RESET MASTER;
+##Multiple users
+create user u1, u2,u3;
+create user u4 identified by 'u', u5 identified by 'u', u6 identified by 'u';
+create user u7 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E917", u8 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E918", u9 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919";
+select * from mysql.user where user like 'u%';
+Host	User	Password	Select_priv	Insert_priv	Update_priv	Delete_priv	Create_priv	Drop_priv	Reload_priv	Shutdown_priv	Process_priv	File_priv	Grant_priv	References_priv	Index_priv	Alter_priv	Show_db_priv	Super_priv	Create_tmp_table_priv	Lock_tables_priv	Execute_priv	Repl_slave_priv	Repl_client_priv	Create_view_priv	Show_view_priv	Create_routine_priv	Alter_routine_priv	Create_user_priv	Event_priv	Trigger_priv	Create_tablespace_priv	Delete_history_priv	ssl_type	ssl_cipher	x509_issuer	x509_subject	max_questions	max_updates	max_connections	max_user_connections	plugin	authentication_string	password_expired	is_role	default_role	max_statement_time
+%	u1		N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N					0	0	0	0			N	N		0.000000
+%	u2		N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N					0	0	0	0			N	N		0.000000
+%	u3		N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N					0	0	0	0			N	N		0.000000
+%	u4	*419256D0B4CBC2A2A3EDF9A1983C9FB400938026	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N					0	0	0	0			N	N		0.000000
+%	u5	*419256D0B4CBC2A2A3EDF9A1983C9FB400938026	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N					0	0	0	0			N	N		0.000000
+%	u6	*419256D0B4CBC2A2A3EDF9A1983C9FB400938026	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N					0	0	0	0			N	N		0.000000
+%	u7	2470C0C06DEE42FD1618BB99005ADCA2EC9D1E917	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N					0	0	0	0			N	N		0.000000
+%	u8	2470C0C06DEE42FD1618BB99005ADCA2EC9D1E918	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N					0	0	0	0			N	N		0.000000
+%	u9	2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N					0	0	0	0			N	N		0.000000
+include/show_binlog_events.inc
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u1'@'%'/* Generated by server */
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u2'@'%'/* Generated by server */
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u3'@'%'/* Generated by server */
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u4'@'%'IDENTIFIED BY 'u' /* Generated by server */
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u5'@'%'IDENTIFIED BY 'u' /* Generated by server */
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u6'@'%'IDENTIFIED BY 'u' /* Generated by server */
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u7'@'%'IDENTIFIED BY PASSWORD '2470C0C06DEE42FD1618BB99005ADCA2EC9D1E917' /* Generated by server */
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u8'@'%'IDENTIFIED BY PASSWORD '2470C0C06DEE42FD1618BB99005ADCA2EC9D1E918' /* Generated by server */
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u9'@'%'IDENTIFIED BY PASSWORD '2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919' /* Generated by server */
+drop user u1, u2, u3, u4, u5,u6,u7,u8,u9;
+RESET MASTER;
+##More complex cases
+create user u1 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919", u2 identified by 'password' require NONE;
+include/show_binlog_events.inc
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u1'@'%'IDENTIFIED BY PASSWORD '2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919'  REQUIRE  NONE /* Generated by server */
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u2'@'%'IDENTIFIED BY 'password'  REQUIRE  NONE /* Generated by server */
+drop user u1, u2;
+RESET MASTER;
+create user u1 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919", u2 identified by 'password' require SSL;
+include/show_binlog_events.inc
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u1'@'%'IDENTIFIED BY PASSWORD '2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919'  REQUIRE  SSL /* Generated by server */
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u2'@'%'IDENTIFIED BY 'password'  REQUIRE  SSL /* Generated by server */
+drop user u1, u2;
+RESET MASTER;
+create user u1 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919", u2 identified by 'password' require X509;
+include/show_binlog_events.inc
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u1'@'%'IDENTIFIED BY PASSWORD '2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919'  REQUIRE  X509 /* Generated by server */
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u2'@'%'IDENTIFIED BY 'password'  REQUIRE  X509 /* Generated by server */
+drop user u1, u2;
+RESET MASTER;
+create user u1 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919", u2 identified by 'password' require CIPHER 'cipher' and subject 'sub' and issuer 'iss';
+include/show_binlog_events.inc
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u1'@'%'IDENTIFIED BY PASSWORD '2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919'  REQUIRE  SUBJECT 'sub'  ISSUER 'iss'  CIPHER 'cipher' /* Generated by server */
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u2'@'%'IDENTIFIED BY 'password'  REQUIRE  SUBJECT 'sub'  ISSUER 'iss'  CIPHER 'cipher' /* Generated by server */
+drop user u1, u2;
+RESET MASTER;
+create user u1 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919", u2 identified by 'password' require CIPHER 'cipher' and subject 'sub' and issuer 'iss'
+WITH
+MAX_QUERIES_PER_HOUR 1
+MAX_UPDATES_PER_HOUR 1
+MAX_CONNECTIONS_PER_HOUR 1
+MAX_USER_CONNECTIONS 1 ;
+include/show_binlog_events.inc
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u1'@'%'IDENTIFIED BY PASSWORD '2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919'  REQUIRE  SUBJECT 'sub'  ISSUER 'iss'  CIPHER 'cipher'  WITH  MAX_QUERIES_PER_HOUR 1 MAX_UPDATES_PER_HOUR 1 MAX_CONNECTIONS_PER_HOUR 1 MAX_USER_CONNECTIONS 1/* Generated by server */
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u2'@'%'IDENTIFIED BY 'password'  REQUIRE  SUBJECT 'sub'  ISSUER 'iss'  CIPHER 'cipher'  WITH  MAX_QUERIES_PER_HOUR 1 MAX_UPDATES_PER_HOUR 1 MAX_CONNECTIONS_PER_HOUR 1 MAX_USER_CONNECTIONS 1/* Generated by server */
+drop user u1, u2;
+RESET MASTER;
+create user u1 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919", u2 identified by 'password', u3 require CIPHER 'cipher' and subject 'sub' and issuer 'iss'
+WITH
+MAX_QUERIES_PER_HOUR 1
+MAX_UPDATES_PER_HOUR 1
+MAX_CONNECTIONS_PER_HOUR 1
+MAX_USER_CONNECTIONS 1 ;
+flush logs;
+drop user u1, u2, u3;
+RESET MASTER;
+include/show_binlog_events.inc
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u1'@'%'IDENTIFIED BY PASSWORD '2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919'  REQUIRE  SUBJECT 'sub'  ISSUER 'iss'  CIPHER 'cipher'  WITH  MAX_QUERIES_PER_HOUR 1 MAX_UPDATES_PER_HOUR 1 MAX_CONNECTIONS_PER_HOUR 1 MAX_USER_CONNECTIONS 1
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u2'@'%'IDENTIFIED BY 'password'  REQUIRE  SUBJECT 'sub'  ISSUER 'iss'  CIPHER 'cipher'  WITH  MAX_QUERIES_PER_HOUR 1 MAX_UPDATES_PER_HOUR 1 MAX_CONNECTIONS_PER_HOUR 1 MAX_USER_CONNECTIONS 1
+master-bin.000001	#	Gtid	#	#	GTID #-#-#
+master-bin.000001	#	Query	#	#	use `test`; CREATE USER 'u3'@'%' REQUIRE  SUBJECT 'sub'  ISSUER 'iss'  CIPHER 'cipher'  WITH  MAX_QUERIES_PER_HOUR 1 MAX_UPDATES_PER_HOUR 1 MAX_CONNECTIONS_PER_HOUR 1 MAX_USER_CONNECTIONS 1
+select * from mysql.user where user like 'u%';
+Host	User	Password	Select_priv	Insert_priv	Update_priv	Delete_priv	Create_priv	Drop_priv	Reload_priv	Shutdown_priv	Process_priv	File_priv	Grant_priv	References_priv	Index_priv	Alter_priv	Show_db_priv	Super_priv	Create_tmp_table_priv	Lock_tables_priv	Execute_priv	Repl_slave_priv	Repl_client_priv	Create_view_priv	Show_view_priv	Create_routine_priv	Alter_routine_priv	Create_user_priv	Event_priv	Trigger_priv	Create_tablespace_priv	Delete_history_priv	ssl_type	ssl_cipher	x509_issuer	x509_subject	max_questions	max_updates	max_connections	max_user_connections	plugin	authentication_string	password_expired	is_role	default_role	max_statement_time
+%	u1	2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	SPECIFIED	cipher	iss	sub	1	1	1	1			N	N		0.000000
+%	u2	*2470C0C06DEE42FD1618BB99005ADCA2EC9D1E19	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	SPECIFIED	cipher	iss	sub	1	1	1	1			N	N		0.000000
+%	u3		N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	SPECIFIED	cipher	iss	sub	1	1	1	1			N	N		0.000000
+drop user u1, u2, u3;
+RESET MASTER;

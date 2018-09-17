@@ -1,0 +1,83 @@
+--source include/have_binlog_format_row.inc
+--echo #Single user creation will not have server generated binlog
+create or replace user u1;
+create user if not exists u2;
+create user u3 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919";
+create user u4 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919" require CIPHER 'cipher'
+                                                   AND SUBJECT 'subject'
+                                                   AND ISSUER 'issuer'
+                                                   with MAX_UPDATES_PER_HOUR 20;
+
+select * from mysql.user where user like 'u%';
+--source include/show_binlog_events.inc
+drop user u1, u2, u3, u4;
+RESET MASTER;
+
+
+--echo #Roles are not effected
+create role r;
+create or replace role r;
+--source include/show_binlog_events.inc
+drop role r;
+RESET MASTER;
+
+
+--echo ##Multiple users
+create user u1, u2,u3;
+create user u4 identified by 'u', u5 identified by 'u', u6 identified by 'u';
+create user u7 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E917", u8 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E918", u9 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919";
+
+select * from mysql.user where user like 'u%';
+--source include/show_binlog_events.inc
+drop user u1, u2, u3, u4, u5,u6,u7,u8,u9;
+RESET MASTER;
+
+--echo ##More complex cases
+create user u1 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919", u2 identified by 'password' require NONE;
+--source include/show_binlog_events.inc
+drop user u1, u2;
+RESET MASTER;
+
+create user u1 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919", u2 identified by 'password' require SSL;
+--source include/show_binlog_events.inc
+drop user u1, u2;
+RESET MASTER;
+
+create user u1 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919", u2 identified by 'password' require X509;
+--source include/show_binlog_events.inc
+drop user u1, u2;
+RESET MASTER;
+
+create user u1 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919", u2 identified by 'password' require CIPHER 'cipher' and subject 'sub' and issuer 'iss';
+--source include/show_binlog_events.inc
+drop user u1, u2;
+RESET MASTER;
+
+create user u1 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919", u2 identified by 'password' require CIPHER 'cipher' and subject 'sub' and issuer 'iss'
+WITH
+  MAX_QUERIES_PER_HOUR 1
+  MAX_UPDATES_PER_HOUR 1
+  MAX_CONNECTIONS_PER_HOUR 1
+  MAX_USER_CONNECTIONS 1 ;
+--source include/show_binlog_events.inc
+drop user u1, u2;
+RESET MASTER;
+
+create user u1 identified by password "2470C0C06DEE42FD1618BB99005ADCA2EC9D1E919", u2 identified by 'password', u3 require CIPHER 'cipher' and subject 'sub' and issuer 'iss'
+WITH
+  MAX_QUERIES_PER_HOUR 1
+  MAX_UPDATES_PER_HOUR 1
+  MAX_CONNECTIONS_PER_HOUR 1
+  MAX_USER_CONNECTIONS 1 ;
+flush logs;
+--let $MYSQLD_DATADIR= `SELECT @@datadir`
+--exec $MYSQL_BINLOG -vvv $MYSQLD_DATADIR/master-bin.000001 > $MYSQLTEST_VARDIR/tmp/a.binlog
+drop user u1, u2, u3;
+RESET MASTER;
+
+--exec $MYSQL < $MYSQLTEST_VARDIR/tmp/a.binlog
+--source include/show_binlog_events.inc
+select * from mysql.user where user like 'u%';
+drop user u1, u2, u3;
+RESET MASTER;
+--remove_file $MYSQLTEST_VARDIR/tmp/a.binlog
