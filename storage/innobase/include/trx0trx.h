@@ -777,7 +777,7 @@ private:
     that it is no longer "active".
   */
 
-  int32_t n_ref;
+  std::atomic<int32_t> n_ref;
 
 
 public:
@@ -1123,16 +1123,16 @@ public:
 
   bool is_referenced()
   {
-    return my_atomic_load32_explicit(&n_ref, MY_MEMORY_ORDER_RELAXED) > 0;
+    return n_ref.load(std::memory_order_relaxed) > 0;
   }
 
 
   void reference()
   {
 #ifdef UNIV_DEBUG
-  int32_t old_n_ref=
+    int32_t old_n_ref=
 #endif
-    my_atomic_add32_explicit(&n_ref, 1, MY_MEMORY_ORDER_RELAXED);
+    n_ref.fetch_add(1, std::memory_order_relaxed);
     ut_ad(old_n_ref >= 0);
   }
 
@@ -1140,9 +1140,9 @@ public:
   void release_reference()
   {
 #ifdef UNIV_DEBUG
-  int32_t old_n_ref=
+    int32_t old_n_ref=
 #endif
-    my_atomic_add32_explicit(&n_ref, -1, MY_MEMORY_ORDER_RELAXED);
+    n_ref.fetch_sub(1, std::memory_order_relaxed);
     ut_ad(old_n_ref > 0);
   }
 
