@@ -805,7 +805,7 @@ class trx_sys_t
     @sa assign_new_trx_no()
     @sa snapshot_ids()
   */
-  MY_ALIGNED(CACHE_LINE_SIZE) trx_id_t m_rw_trx_hash_version;
+  MY_ALIGNED(CACHE_LINE_SIZE) std::atomic<trx_id_t> m_rw_trx_hash_version;
 
 
   /**
@@ -987,7 +987,7 @@ public:
   void init_max_trx_id(trx_id_t value)
   {
     m_max_trx_id.store(value, std::memory_order_relaxed);
-    m_rw_trx_hash_version= value;
+    m_rw_trx_hash_version.store(value, std::memory_order_relaxed);
   }
 
 
@@ -1168,18 +1168,14 @@ private:
   /** Getter for m_rw_trx_hash_version, must issue ACQUIRE memory barrier. */
   trx_id_t get_rw_trx_hash_version()
   {
-    return static_cast<trx_id_t>
-           (my_atomic_load64_explicit(reinterpret_cast<int64*>
-                                      (&m_rw_trx_hash_version),
-                                      MY_MEMORY_ORDER_ACQUIRE));
+    return m_rw_trx_hash_version.load(std::memory_order_acquire);
   }
 
 
   /** Increments m_rw_trx_hash_version, must issue RELEASE memory barrier. */
   void refresh_rw_trx_hash_version()
   {
-    my_atomic_add64_explicit(reinterpret_cast<int64*>(&m_rw_trx_hash_version),
-                             1, MY_MEMORY_ORDER_RELEASE);
+    m_rw_trx_hash_version.fetch_add(1, std::memory_order_release);
   }
 
 
