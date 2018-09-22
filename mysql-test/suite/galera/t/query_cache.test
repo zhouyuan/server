@@ -1011,23 +1011,19 @@ drop table t1;
 --connection node_1
 create table t1 (a int) engine=innodb;
 show status like "Qcache_queries_in_cache";
-show status like "Qcache_inserts";
 show status like "Qcache_hits";
 /**/ select * from t1;
 /**/ select * from t1;
 show status like "Qcache_queries_in_cache";
-show status like "Qcache_inserts";
 show status like "Qcache_hits";
 
 --echo # On node-2
 --connection node_2
 show status like "Qcache_queries_in_cache";
-show status like "Qcache_inserts";
 show status like "Qcache_hits";
 /**/ select * from t1;
 /**/ select * from t1;
 show status like "Qcache_queries_in_cache";
-show status like "Qcache_inserts";
 show status like "Qcache_hits";
 
 drop table t1;

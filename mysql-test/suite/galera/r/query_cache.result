@@ -1514,9 +1514,6 @@ create table t1 (a int) engine=innodb;
 show status like "Qcache_queries_in_cache";
 Variable_name	Value
 Qcache_queries_in_cache	0
-show status like "Qcache_inserts";
-Variable_name	Value
-Qcache_inserts	46
 show status like "Qcache_hits";
 Variable_name	Value
 Qcache_hits	12
@@ -1527,9 +1524,6 @@ a
 show status like "Qcache_queries_in_cache";
 Variable_name	Value
 Qcache_queries_in_cache	1
-show status like "Qcache_inserts";
-Variable_name	Value
-Qcache_inserts	47
 show status like "Qcache_hits";
 Variable_name	Value
 Qcache_hits	13
@@ -1537,9 +1531,6 @@ Qcache_hits	13
 show status like "Qcache_queries_in_cache";
 Variable_name	Value
 Qcache_queries_in_cache	0
-show status like "Qcache_inserts";
-Variable_name	Value
-Qcache_inserts	39
 show status like "Qcache_hits";
 Variable_name	Value
 Qcache_hits	11
@@ -1550,9 +1541,6 @@ a
 show status like "Qcache_queries_in_cache";
 Variable_name	Value
 Qcache_queries_in_cache	1
-show status like "Qcache_inserts";
-Variable_name	Value
-Qcache_inserts	40
 show status like "Qcache_hits";
 Variable_name	Value
 Qcache_hits	12
