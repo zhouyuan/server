@@ -721,16 +721,15 @@ struct mutex_struct {
 				Otherwise, this is 0. */
 	UT_LIST_NODE_T(mutex_t)	list; /*!< All allocated mutexes are put into
 				a list.	Pointers to the next and prev. */
-#ifdef UNIV_SYNC_DEBUG
+
 	const char*	file_name;	/*!< File where the mutex was locked */
 	ulint	line;		/*!< Line where the mutex was locked */
-	ulint	level;		/*!< Level in the global latching order */
-#endif /* UNIV_SYNC_DEBUG */
+	os_thread_id_t thread_id; /*!< The thread id of the thread
+						which locked the mutex. */
 #ifdef UNIV_DEBUG
 	const char*	cfile_name;/*!< File name where mutex created */
 	ulint		cline;	/*!< Line where created */
-	os_thread_id_t thread_id; /*!< The thread id of the thread
-				which locked the mutex. */
+	ulint	level;		/*!< Level in the global latching order */
 	ulint		magic_n;	/*!< MUTEX_MAGIC_N */
 /** Value of mutex_struct::magic_n */
 # define MUTEX_MAGIC_N	(ulint)979585

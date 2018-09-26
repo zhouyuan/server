@@ -321,7 +321,7 @@ rw_lock_s_lock_low(
         or even refer to a line that is invalid for the file name. */
 	lock->last_s_file_name = file_name;
 	lock->last_s_line = line;
-
+	lock->last_s_thread_id = os_thread_get_curr_id();
 	return(TRUE);	/* locking succeeded */
 }
 

@@ -494,15 +494,12 @@ sync_array_cell_print(
 		if (mutex) {
 			fprintf(file,
 				"Mutex at %p '%s', lock var %lu\n"
-#ifdef UNIV_SYNC_DEBUG
-				"Last time reserved in file %s line %lu, "
-#endif /* UNIV_SYNC_DEBUG */
+				"Last time reserved in file %s line %lu by thread %lu, "
 				"waiters flag %lu\n",
 				(void*) mutex, mutex->cmutex_name,
 				(ulong) mutex->lock_word,
-#ifdef UNIV_SYNC_DEBUG
 				mutex->file_name, (ulong) mutex->line,
-#endif /* UNIV_SYNC_DEBUG */
+				(ulong) mutex->thread_id,
 				(ulong) mutex->waiters);
 		}
 
@@ -547,13 +544,14 @@ sync_array_cell_print(
 			fprintf(file,
 				"number of readers %lu, waiters flag %lu, "
 				"lock_word: %lx\n"
-				"Last time read locked in file %s line %lu\n"
+				"Last time read locked in file %s line %lu by thread %lu\n"
 				"Last time write locked in file %s line %lu\n",
 				(ulong) rw_lock_get_reader_count(rwlock),
 				(ulong) rwlock->waiters,
 				rwlock->lock_word,
 				innobase_basename(rwlock->last_s_file_name),
 				(ulong) rwlock->last_s_line,
+				(ulong) rwlock->last_s_thread_id,
 				rwlock->last_x_file_name,
 				(ulong) rwlock->last_x_line);
 

@@ -628,6 +628,7 @@ struct rw_lock_struct {
         /* last s-lock file/line is not guaranteed to be correct */
 	const char*	last_s_file_name;/*!< File name where last s-locked */
 	const char*	last_x_file_name;/*!< File name where last x-locked */
+	os_thread_id_t	last_s_thread_id;/* <! Last s-locker's thread id */
 	ibool		writer_is_wait_ex;
 				/*!< This is TRUE if the writer field is
 				RW_LOCK_WAIT_EX; this field is located far

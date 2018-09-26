@@ -287,6 +287,7 @@ rw_lock_create_func(
 	lock->last_x_file_name = "not yet reserved";
 	lock->last_s_line = 0;
 	lock->last_x_line = 0;
+	lock->last_s_thread_id = 0;
 	lock->event = os_event_create(NULL);
 	lock->wait_ex_event = os_event_create(NULL);
 

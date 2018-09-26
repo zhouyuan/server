@@ -290,9 +290,10 @@ mutex_create_func(
 #ifdef UNIV_DEBUG
 	mutex->magic_n = MUTEX_MAGIC_N;
 #endif /* UNIV_DEBUG */
-#ifdef UNIV_SYNC_DEBUG
 	mutex->line = 0;
 	mutex->file_name = "not yet reserved";
+	mutex->thread_id = 0;
+#ifdef UNIV_SYNC_DEBUG
 	mutex->level = level;
 #endif /* UNIV_SYNC_DEBUG */
 #ifdef UNIV_DEBUG
@@ -556,10 +557,9 @@ spin_loop:
 	if (mutex_test_and_set(mutex) == 0) {
 		/* Succeeded! */
 
-		ut_d(mutex->thread_id = os_thread_get_curr_id());
-#ifdef UNIV_SYNC_DEBUG
-		mutex_set_debug_info(mutex, file_name, line);
-#endif
+		mutex->thread_id = os_thread_get_curr_id();
+		mutex->file_name = file_name;
+		mutex->line = line;
 
 		goto finish_timing;
 	}
@@ -600,7 +600,10 @@ spin_loop:
 
 			sync_array_free_cell(sync_primary_wait_array, index);
 
-			ut_d(mutex->thread_id = os_thread_get_curr_id());
+			mutex->thread_id = os_thread_get_curr_id();
+			mutex->file_name = file_name;
+			mutex->line = line;
+
 #ifdef UNIV_SYNC_DEBUG
 			mutex_set_debug_info(mutex, file_name, line);
 #endif
