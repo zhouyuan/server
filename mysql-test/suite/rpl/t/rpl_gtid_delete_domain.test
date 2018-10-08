@@ -54,10 +54,21 @@ START SLAVE IO_THREAD;
 FLUSH BINARY LOGS;
 --let $purge_to_binlog= query_get_value(SHOW MASTER STATUS, File, 1)
 --eval PURGE BINARY LOGS TO '$purge_to_binlog';
+
+--echo Gtid binlog state after purge to the latest file:  
+--source include/show_binary_logs.inc
+--let $binlog_file=$purge_to_binlog
+--source include/show_gtid_list.inc
+SELECT @@GLOBAL.gtid_binlog_state, @@GLOBAL.gtid_binlog_pos as 'Before Delete Domain';
+
+
 # with final removal of the extra domain
 --eval FLUSH BINARY LOGS DELETE_DOMAIN_ID=($extra_domain_id)
+SELECT @@GLOBAL.gtid_binlog_state, @@GLOBAL.gtid_binlog_pos as 'After Delete Domain';
 
 --connection slave
+SELECT @@GLOBAL.gtid_slave_pos as 'Slave Gtid Pos';
+
 # start the slave sucessfully
 --source include/start_slave.inc
 

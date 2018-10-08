@@ -17,7 +17,23 @@ START SLAVE IO_THREAD;
 include/wait_for_slave_io_error.inc [errno=1236]
 FLUSH BINARY LOGS;
 PURGE BINARY LOGS TO 'master-bin.000002';;
+Gtid binlog state after purge to the latest file:  
+show binary logs;
+Log_name	File_size
+master-bin.000002	#
+show binlog events in 'master-bin.000002' limit 1,1;
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000002	#	Gtid_list	1	#	[11-111-1,0-1-1]
+SELECT @@GLOBAL.gtid_binlog_state, @@GLOBAL.gtid_binlog_pos as 'Before Delete Domain';
+@@GLOBAL.gtid_binlog_state	Before Delete Domain
+0-1-1,11-111-1	0-1-1,11-111-1
 FLUSH BINARY LOGS DELETE_DOMAIN_ID=(11);
+SELECT @@GLOBAL.gtid_binlog_state, @@GLOBAL.gtid_binlog_pos as 'After Delete Domain';
+@@GLOBAL.gtid_binlog_state	After Delete Domain
+0-1-1	0-1-1
+SELECT @@GLOBAL.gtid_slave_pos as 'Slave Gtid Pos';
+Slave Gtid Pos
+0-1-1,11-111-2
 include/start_slave.inc
 INSERT INTO t SET a=1;
 include/wait_for_slave_io_error.inc [errno=1236]

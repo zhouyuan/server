@@ -17,6 +17,12 @@ master-bin.000002	#
 SET @@SESSION.gtid_domain_id=1;
 SET @@SESSION.server_id=1;
 CREATE TABLE t (a int);
+SELECT @@GLOBAL.gtid_binlog_state, @@GLOBAL.gtid_binlog_pos;
+@@GLOBAL.gtid_binlog_state	@@GLOBAL.gtid_binlog_pos
+1-1-1	1-1-1
+include/show_binlog_events.inc
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000001	#	Rotate	#	#	master-bin.000002;pos=POS
 FLUSH BINARY LOGS DELETE_DOMAIN_ID = (1);
 ERROR HY000: Could not delete gtid domain. Reason: binlog files may contain gtids from the domain ('1') being deleted. Make sure to first purge those files.
 FLUSH BINARY LOGS;
