@@ -222,6 +222,7 @@ typedef struct st_mi_isam_share
     global_changed,                     /* If changed since open */
     not_flushed, temporary, delay_key_write, concurrent_insert;
   my_bool deleting;                     /* we are going to delete this table */
+  my_bool intern_lock_locked;
   THR_LOCK lock;
   mysql_mutex_t intern_lock;            /* Locking for use with _locking */
   mysql_rwlock_t *key_root_lock;
@@ -296,6 +297,7 @@ struct st_myisam_info
   uint preload_buff_size;               /* When preloading indexes */
   myf lock_wait;                        /* is 0 or MY_SHORT_WAIT */
   my_bool was_locked;                   /* Was locked in panic */
+  my_bool intern_lock_locked;           /* locked in mi_extra() */
   my_bool append_insert_at_end;         /* Set if concurrent insert */
   my_bool quick_mode;
   /* If info->buff can't be used for rnext */
