@@ -80,5 +80,11 @@ the following command succeeds with warnings
 FLUSH BINARY LOGS DELETE_DOMAIN_ID = (1);
 Warnings:
 Warning	1076	The current gtid binlog state is incompatible with a former one having a gtid '11-11-1' which is less than the '11-11-11' of the gtid list describing an earlier state. The state may have been affected by manually injecting a lower sequence number gtid or via replication.
+RESET MASTER;
+FLUSH BINARY LOGS DELETE_DOMAIN_ID = (4294967296);
+ERROR HY000: The value of gtid domain being deleted ('4294967296') exceeds its maximum size of 32 bit unsigned integer
+FLUSH BINARY LOGS DELETE_DOMAIN_ID = (4294967295);
+Warnings:
+Warning	1076	The gtid domain being deleted ('4294967295') is not in the current binlog state
 DROP TABLE t;
 RESET MASTER;
