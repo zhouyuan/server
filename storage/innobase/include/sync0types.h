@@ -1195,19 +1195,26 @@ struct MY_ALIGNED(CPU_LEVEL1_DCACHE_LINESIZE) simple_atomic_counter
 	/** Increment the counter */
 	Type inc() { return add(1); }
 	/** Decrement the counter */
-	Type dec() { return add(Type(~0)); }
+	Type dec() {
+		return m_counter.fetch_sub(1, std::memory_order_relaxed);
+	}
 
 	/** Add to the counter
 	@param[in]	i	amount to be added
 	@return	the value of the counter before adding */
-	Type add(Type i) { return my_atomic_addlint(&m_counter, i); }
+	Type add(Type i) {
+		return m_counter.fetch_add(i, std::memory_order_relaxed);
+	}
 
-	/** @return the value of the counter (non-atomic access)! */
-	operator Type() const { return m_counter; }
+	/** @return the value of the counter */
+	operator Type() const
+	{
+		return m_counter.load(std::memory_order_relaxed);
+	}
 
 private:
 	/** The counter */
-	Type	m_counter;
+	std::atomic<Type>	m_counter;
 };
 
 #endif /* sync0types_h */
