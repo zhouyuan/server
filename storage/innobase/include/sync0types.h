@@ -31,8 +31,8 @@ Created 9/5/1995 Heikki Tuuri
 #include <iostream>
 #include <my_atomic.h>
 
-#include "ut0new.h"
 #include "ut0counter.h"
+#include "ut0new.h"
 
 #ifdef _WIN32
 /** Native mutex */
@@ -1163,58 +1163,4 @@ static inline void my_atomic_storelint(ulint *A, ulint B)
   my_atomic_storelong(A, B);
 #endif
 }
-
-/** Simple non-atomic counter aligned to CACHE_LINE_SIZE
-@tparam	Type	the integer type of the counter */
-template <typename Type>
-struct MY_ALIGNED(CPU_LEVEL1_DCACHE_LINESIZE) simple_counter
-{
-	/** Increment the counter */
-	Type inc() { return add(1); }
-	/** Decrement the counter */
-	Type dec() { return add(Type(~0)); }
-
-	/** Add to the counter
-	@param[in]	i	amount to be added
-	@return	the value of the counter after adding */
-	Type add(Type i) { return m_counter += i; }
-
-	/** @return the value of the counter */
-	operator Type() const { return m_counter; }
-
-private:
-	/** The counter */
-	Type	m_counter;
-};
-
-/** Simple atomic counter aligned to CACHE_LINE_SIZE
-@tparam	Type	lint or ulint */
-template <typename Type = ulint>
-struct MY_ALIGNED(CPU_LEVEL1_DCACHE_LINESIZE) simple_atomic_counter
-{
-	/** Increment the counter */
-	Type inc() { return add(1); }
-	/** Decrement the counter */
-	Type dec() {
-		return m_counter.fetch_sub(1, std::memory_order_relaxed);
-	}
-
-	/** Add to the counter
-	@param[in]	i	amount to be added
-	@return	the value of the counter before adding */
-	Type add(Type i) {
-		return m_counter.fetch_add(i, std::memory_order_relaxed);
-	}
-
-	/** @return the value of the counter */
-	operator Type() const
-	{
-		return m_counter.load(std::memory_order_relaxed);
-	}
-
-private:
-	/** The counter */
-	std::atomic<Type>	m_counter;
-};
-
 #endif /* sync0types_h */

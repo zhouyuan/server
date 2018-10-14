@@ -118,4 +118,67 @@ private:
 	ib_counter_element_t m_counter[N];
 };
 
+/** Simple non-atomic counter aligned to CACHE_LINE_SIZE
+@tparam	Type	the integer type of the counter */
+template <typename Type>
+struct MY_ALIGNED(CPU_LEVEL1_DCACHE_LINESIZE) simple_counter
+{
+	/** Increment the counter */
+	Type inc() { return add(1); }
+	/** Decrement the counter */
+	Type dec() { return sub(1); }
+
+	/** Add to the counter
+	@param[in]	i	amount to be added
+	@return	the value of the counter after adding */
+	Type add(Type i) { return m_counter += i; }
+
+	/** Subtract from the counter
+	@param[in]	i	amount to be subtracted
+	@return	the value of the counter before subtracting */
+	Type sub(Type i) { return m_counter -= i; }
+
+	/** @return the value of the counter */
+	operator Type() const { return m_counter; }
+
+private:
+	/** The counter */
+	Type	m_counter;
+};
+
+/** Simple atomic counter aligned to CACHE_LINE_SIZE
+@tparam	Type	lint or ulint */
+template <typename Type = ulint>
+struct MY_ALIGNED(CPU_LEVEL1_DCACHE_LINESIZE) simple_atomic_counter
+{
+	/** Increment the counter */
+	Type inc() { return add(1); }
+	/** Decrement the counter */
+	Type dec() { return sub(1); }
+
+	/** Add to the counter
+	@param[in]	i	amount to be added
+	@return	the value of the counter before adding */
+	Type add(Type i) {
+		return m_counter.fetch_add(i, std::memory_order_relaxed);
+	}
+
+	/** Subtract from the counter
+	@param[in]	i	amount to be subtracted
+	@return	the value of the counter before subtracting */
+	Type sub(Type i) {
+		return m_counter.fetch_sub(i, std::memory_order_relaxed);
+	}
+
+	/** @return the value of the counter */
+	operator Type() const
+	{
+		return m_counter.load(std::memory_order_relaxed);
+	}
+
+private:
+	/** The counter */
+	std::atomic<Type>	m_counter;
+};
+
 #endif /* ut0counter_h */
