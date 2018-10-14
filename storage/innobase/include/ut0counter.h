@@ -30,7 +30,6 @@ Created 2012/04/12 by Sunny Bains
 
 #include <my_rdtsc.h>
 #include "univ.i"
-#include "os0thread.h"
 #include <atomic>
 
 /** CPU cache line size */
@@ -58,7 +57,7 @@ get_rnd_value()
 	/* We may go here if my_timer_cycles() returns 0,
 	so we have to have the plan B for the counter. */
 #if !defined(_WIN32)
-	return (size_t)os_thread_get_curr_id();
+	return size_t(pthread_self());
 #else
 	LARGE_INTEGER cnt;
 	QueryPerformanceCounter(&cnt);
@@ -89,9 +88,6 @@ struct ib_counter_t {
 	@param[in]	n	amount to be added */
 	void add(size_t index, Type n) {
 		index = index % N;
-
-		ut_ad(index < UT_ARR_SIZE(m_counter));
-
 		m_counter[index].value.fetch_add(n, std::memory_order_relaxed);
 	}
 

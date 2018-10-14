@@ -29,6 +29,7 @@ Created 9/8/1995 Heikki Tuuri
 #define os0thread_h
 
 #include "univ.i"
+#include "ut0counter.h"
 
 /* Possible fixed priorities for threads */
 #define OS_THREAD_PRIORITY_NONE		100
@@ -73,7 +74,7 @@ typedef unsigned int    mysql_pfs_key_t;
 #endif /* HAVE_PSI_INTERFACE */
 
 /** Number of threads active. */
-extern	ulint	os_thread_count;
+extern	simple_atomic_counter<>	os_thread_count;
 
 /***************************************************************//**
 Compares two thread ids for equality.

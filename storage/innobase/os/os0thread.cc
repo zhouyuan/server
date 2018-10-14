@@ -33,7 +33,7 @@ Created 9/8/1995 Heikki Tuuri
 #include <map>
 
 /** Number of threads active. */
-ulint	os_thread_count;
+simple_atomic_counter<>	os_thread_count;
 
 /***************************************************************//**
 Compares two thread ids for equality.
@@ -123,7 +123,7 @@ os_thread_create_func(
 
 	CloseHandle(handle);
 
-	my_atomic_addlint(&os_thread_count, 1);
+	os_thread_count.inc();
 
 	return((os_thread_t)new_thread_id);
 #else /* _WIN32 else */
@@ -132,7 +132,7 @@ os_thread_create_func(
 
 	pthread_attr_init(&attr);
 
-	my_atomic_addlint(&os_thread_count, 1);
+	os_thread_count.inc();
 
 	int	ret = pthread_create(&new_thread_id, &attr, func, arg);
 
@@ -187,7 +187,7 @@ os_thread_exit(bool detach)
 	pfs_delete_thread();
 #endif
 
-	my_atomic_addlint(&os_thread_count, ulint(-1));
+	os_thread_count.dec();
 
 #ifdef _WIN32
 	ExitThread(0);
