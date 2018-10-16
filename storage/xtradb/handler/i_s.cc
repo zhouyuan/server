@@ -3261,7 +3261,6 @@ i_s_fts_index_cache_fill_one_index(
 	fields = table->field;
 
 	index_charset = index_cache->charset;
-	conv_str->f_n_char = 0;
 
 	int	ret = 0;
 
@@ -3275,15 +3274,15 @@ i_s_fts_index_cache_fill_one_index(
 
 		/* Convert word from index charset to system_charset_info */
 		if (index_charset->cset != system_charset_info->cset) {
-			conv_str->f_n_char = my_convert(
+			ulint	n_chars = my_convert(
 				reinterpret_cast<char*>(conv_str->f_str),
 				static_cast<uint32>(conv_str->f_len),
 				system_charset_info,
 				reinterpret_cast<char*>(word->text.f_str),
 				static_cast<uint32>(word->text.f_len),
 				index_charset, &dummy_errors);
-			ut_ad(conv_str->f_n_char <= conv_str->f_len);
-			conv_str->f_str[conv_str->f_n_char] = 0;
+			ut_ad(n_chars <= conv_str->f_len);
+			conv_str->f_str[n_chars] = 0;
 			word_str = reinterpret_cast<char*>(conv_str->f_str);
 		} else {
 			word_str = reinterpret_cast<char*>(word->text.f_str);
@@ -3642,15 +3641,15 @@ i_s_fts_index_table_fill_one_fetch(
 
 		/* Convert word from index charset to system_charset_info */
 		if (index_charset->cset != system_charset_info->cset) {
-			conv_str->f_n_char = my_convert(
+			ulint n_chars = my_convert(
 				reinterpret_cast<char*>(conv_str->f_str),
 				static_cast<uint32>(conv_str->f_len),
 				system_charset_info,
 				reinterpret_cast<char*>(word->text.f_str),
 				static_cast<uint32>(word->text.f_len),
 				index_charset, &dummy_errors);
-			ut_ad(conv_str->f_n_char <= conv_str->f_len);
-			conv_str->f_str[conv_str->f_n_char] = 0;
+			ut_ad(n_chars <= conv_str->f_len);
+			conv_str->f_str[n_chars] = 0;
 			word_str = reinterpret_cast<char*>(conv_str->f_str);
 		} else {
 			word_str = reinterpret_cast<char*>(word->text.f_str);
@@ -3742,7 +3741,6 @@ i_s_fts_index_table_fill_one_index(
 
 	word.f_str = NULL;
 	word.f_len = 0;
-	word.f_n_char = 0;
 
 	index_charset = fts_index_get_charset(index);
 

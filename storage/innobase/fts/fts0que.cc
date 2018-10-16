@@ -583,10 +583,18 @@ fts_ranking_words_add(
 
 	/* We use ib_rbt to simulate a map, f_n_char means position. */
 	if (rbt_search(query->word_map, &parent, word) == 0) {
-		fts_string_t*	result_word;
+		CHARSET_INFO*	charset = query->fts_index_table.charset;
 
-		result_word = rbt_value(fts_string_t, parent.last);
-		pos = result_word->f_n_char;
+		for (ulint i = 0; i < query->word_vector->size(); i++) {
+			if (!my_strcasecmp(
+				charset,
+				(const char*) query->word_vector->at(i).f_str,
+				(const char*) word->f_str)) {
+				pos = i;
+				break;
+			}
+		}
+
 		ut_ad(pos < rbt_size(query->word_map));
 	} else {
 		/* Add the word to map. */
@@ -599,7 +607,6 @@ fts_ranking_words_add(
 		memcpy(new_word.f_str, word->f_str, word->f_len);
 		new_word.f_str[word->f_len] = 0;
 		new_word.f_len = word->f_len;
-		new_word.f_n_char = pos;
 
 		rbt_add_node(query->word_map, &parent, &new_word);
 		ut_ad(rbt_validate(query->word_map));
@@ -1720,11 +1727,12 @@ fts_proximity_is_word_in_range(
 			ulint		len;
 			fts_string_t	str;
 			ulint           offset = 0;
+			ulint		n_chars = 0;
 
 			len = innobase_mysql_fts_get_token(
 				phrase->charset,
 				start + cur_pos,
-				start + total_len, &str, &offset);
+				start + total_len, &str, &offset, &n_chars);
 
 			if (len == 0) {
 				break;
@@ -1734,7 +1742,7 @@ fts_proximity_is_word_in_range(
 			cur_pos += len;
 
 			/* Record the number of words */
-			if (str.f_n_char > 0) {
+			if (n_chars > 0) {
 				n_word++;
 			}
 
@@ -2540,12 +2548,13 @@ fts_query_phrase_search(
 		ulint		offset;
 		ulint		cur_len;
 		fts_string_t	result_str;
+		ulint		n_chars = 0;
 
                 cur_len = innobase_mysql_fts_get_token(
                         charset,
                         reinterpret_cast<const byte*>(phrase->f_str) + cur_pos,
                         reinterpret_cast<const byte*>(phrase->f_str) + len,
-			&result_str, &offset);
+			&result_str, &offset, &n_chars);
 
 		if (cur_len == 0) {
 			break;
@@ -2553,7 +2562,7 @@ fts_query_phrase_search(
 
 		cur_pos += cur_len;
 
-		if (result_str.f_n_char == 0) {
+		if (n_chars == 0) {
 			continue;
 		}
 
@@ -2570,8 +2579,8 @@ fts_query_phrase_search(
 		if (cache->stopword_info.cached_stopword
 		    && rbt_search(cache->stopword_info.cached_stopword,
 			       &parent, token) != 0
-		    && result_str.f_n_char >= fts_min_token_size
-		    && result_str.f_n_char <= fts_max_token_size) {
+		    && n_chars >= fts_min_token_size
+		    && n_chars <= fts_max_token_size) {
 			/* Add the word to the RB tree so that we can
 			calculate it's frequencey within a document. */
 			fts_query_add_word_freq(query, token);
@@ -2840,7 +2849,6 @@ fts_query_visitor(
 	DBUG_ENTER("fts_query_visitor");
 	DBUG_PRINT("fts", ("nodetype: %s", fts_ast_node_type_get(node->type)));
 
-	token.f_n_char = 0;
 	query->oper = oper;
 	query->cur_node = node;
 

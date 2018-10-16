@@ -100,12 +100,13 @@ fts_ast_create_node_term(
 		fts_string_t	str;
 		ulint		offset;
 		ulint		cur_len;
+		ulint		n_chars = 0;
 
 		cur_len = innobase_mysql_fts_get_token(
 			state->charset,
 			reinterpret_cast<const byte*>(ptr->str) + cur_pos,
 			reinterpret_cast<const byte*>(ptr->str) + len,
-			&str, &offset);
+			&str, &offset, &n_chars);
 
 		if (cur_len == 0) {
 			break;
@@ -113,13 +114,13 @@ fts_ast_create_node_term(
 
 		cur_pos += cur_len;
 
-		if (str.f_n_char > 0) {
+		if (n_chars > 0) {
 			/* If the subsequent term (after the first one)'s size
 			is less than fts_min_token_size or the term is greater
 			than fts_max_token_size, we shall ignore that. This is
 			to make consistent with MyISAM behavior */
-			if ((first_node && (str.f_n_char < fts_min_token_size))
-			    || str.f_n_char > fts_max_token_size) {
+			if ((first_node && (n_chars < fts_min_token_size))
+			    || n_chars > fts_max_token_size) {
 				continue;
 			}
 

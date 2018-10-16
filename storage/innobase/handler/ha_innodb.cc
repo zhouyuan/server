@@ -5986,29 +5986,31 @@ innobase_fts_casedn_str(
 
 #define misc_word_char(X)       0
 
-/*************************************************************//**
-Get the next token from the given string and store it in *token.
+/** Get the next token from the given string and store it in *token.
 It is mostly copied from MyISAM's doc parsing function ft_simple_get_word()
+@param[in]	cs	Character set
+@param[in]	start	start of tex
+@param[in]	end	one character past end of text
+@param[out]	token	token's text
+@param[out]	offset	offset to token, measured as characters from 'start'
+@param[out]	n_chars	number of characters existed
 @return length of string processed */
 UNIV_INTERN
 ulint
 innobase_mysql_fts_get_token(
-/*=========================*/
-	CHARSET_INFO*	cs,		/*!< in: Character set */
-	const byte*	start,		/*!< in: start of text */
-	const byte*	end,		/*!< in: one character past end of
-					text */
-	fts_string_t*	token,		/*!< out: token's text */
-	ulint*		offset)		/*!< out: offset to token,
-					measured as characters from
-					'start' */
+	CHARSET_INFO*	cs,
+	const byte*	start,
+	const byte*	end,
+	fts_string_t*	token,
+	ulint*		offset,
+	ulint*		n_chars)
 {
 	int		mbl;
 	const uchar*	doc = start;
 
 	ut_a(cs);
 
-	token->f_n_char = token->f_len = 0;
+	token->f_len = 0;
 	token->f_str = NULL;
 
 	for (;;) {
@@ -6054,7 +6056,10 @@ innobase_mysql_fts_get_token(
 	}
 
 	token->f_len = (uint) (doc - token->f_str) - mwc;
-	token->f_n_char = length;
+
+	if (n_chars != NULL) {
+		*n_chars = length;
+	}
 
 	return(doc - start);
 }

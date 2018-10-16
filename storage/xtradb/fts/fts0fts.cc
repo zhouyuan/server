@@ -363,8 +363,6 @@ fts_load_default_stopword(
 
 	stop_words = stopword_info->cached_stopword;
 
-	str.f_n_char = 0;
-
 	for (ulint i = 0; fts_default_stopword[i]; ++i) {
 		char*			word;
 		fts_tokenizer_word_t	new_word;
@@ -418,7 +416,6 @@ fts_read_stopword(
 	/* We only need to read the first column */
 	dfield = que_node_get_val(exp);
 
-	str.f_n_char = 0;
 	str.f_str = static_cast<byte*>(dfield_get_data(dfield));
 	str.f_len = dfield_get_len(dfield);
 
@@ -436,7 +433,6 @@ fts_read_stopword(
 
 		memcpy(new_word.text.f_str, str.f_str, str.f_len);
 
-		new_word.text.f_n_char = 0;
 		new_word.text.f_len = str.f_len;
 		new_word.text.f_str[str.f_len] = 0;
 
@@ -2527,7 +2523,6 @@ fts_get_max_cache_size(
 
 	/* We set the length of value to the max bytes it can hold. This
 	information is used by the callback that reads the value. */
-	value.f_n_char = 0;
 	value.f_len = FTS_MAX_CONFIG_VALUE_LEN;
 	value.f_str = ut_malloc(value.f_len + 1);
 
@@ -2597,7 +2592,6 @@ fts_get_total_word_count(
 
 	/* We set the length of value to the max bytes it can hold. This
 	information is used by the callback that reads the value. */
-	value.f_n_char = 0;
 	value.f_len = FTS_MAX_CONFIG_VALUE_LEN;
 	value.f_str = static_cast<byte*>(ut_malloc(value.f_len + 1));
 
@@ -3259,8 +3253,6 @@ fts_query_expansion_fetch_doc(
 			exp = que_node_get_next(exp);
 			continue;
 		} else {
-			doc.text.f_n_char = 0;
-
 			doc.text.f_str = static_cast<byte*>(
 				dfield_get_data(dfield));
 
@@ -4705,6 +4697,7 @@ fts_process_token(
 	fts_string_t	str;
 	ulint		offset = 0;
 	fts_doc_t*	result_doc;
+	ulint		n_chars = 0;
 
 	/* Determine where to save the result. */
 	result_doc = (result) ? result : doc;
@@ -4712,13 +4705,14 @@ fts_process_token(
 	/* The length of a string in characters is set here only. */
 	ret = innobase_mysql_fts_get_token(
 		doc->charset, doc->text.f_str + start_pos,
-		doc->text.f_str + doc->text.f_len, &str, &offset);
+		doc->text.f_str + doc->text.f_len, &str, &offset,
+		&n_chars);
 
 	/* Ignore string whose character number is less than
 	"fts_min_token_size" or more than "fts_max_token_size" */
 
-	if (str.f_n_char >= fts_min_token_size
-	    && str.f_n_char <= fts_max_token_size) {
+	if (n_chars >= fts_min_token_size
+	    && n_chars <= fts_max_token_size) {
 
 		mem_heap_t*	heap;
 		fts_string_t	t_str;
@@ -4727,8 +4721,6 @@ fts_process_token(
 		ulint		newlen;
 
 		heap = static_cast<mem_heap_t*>(result_doc->self_heap->arg);
-
-		t_str.f_n_char = str.f_n_char;
 
 		t_str.f_len = str.f_len * doc->charset->casedn_multiply + 1;
 
@@ -4757,13 +4749,12 @@ fts_process_token(
 
 			new_token.text.f_len = newlen;
 			new_token.text.f_str = t_str.f_str;
-			new_token.text.f_n_char = t_str.f_n_char;
 
 			new_token.positions = ib_vector_create(
 				result_doc->self_heap, sizeof(ulint), 32);
 
-			ut_a(new_token.text.f_n_char >= fts_min_token_size);
-			ut_a(new_token.text.f_n_char <= fts_max_token_size);
+			ut_a(n_chars >= fts_min_token_size);
+			ut_a(n_chars <= fts_max_token_size);
 
 			parent.last = rbt_add_node(
 				result_doc->tokens, &parent, &new_token);
@@ -7408,7 +7399,6 @@ fts_load_stopword(
 	if (reload) {
 		/* Fetch the stopword table name from FTS config
 		table */
-		str.f_n_char = 0;
 		str.f_str = str_buffer;
 		str.f_len = sizeof(str_buffer) - 1;
 
@@ -7433,7 +7423,6 @@ fts_load_stopword(
 		/* Save the stopword table name to the configure
 		table */
 		if (!reload) {
-			str.f_n_char = 0;
 			str.f_str = (byte*) stopword_to_use;
 			str.f_len = ut_strlen(stopword_to_use);
 

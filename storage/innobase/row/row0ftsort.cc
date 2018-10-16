@@ -385,7 +385,6 @@ row_merge_fts_doc_tokenize(
 	ulint		data_size[FTS_NUM_AUX_INDEX];
 	ulint		n_tuple[FTS_NUM_AUX_INDEX];
 
-	t_str.f_n_char = 0;
 	t_ctx->buf_used = 0;
 
 	memset(n_tuple, 0, FTS_NUM_AUX_INDEX * sizeof(ulint));
@@ -400,17 +399,19 @@ row_merge_fts_doc_tokenize(
 		ulint           offset = 0;
 		ulint		cur_len;
 		doc_id_t	write_doc_id;
+		ulint		n_chars = 0;
 
 		inc = innobase_mysql_fts_get_token(
 			doc->charset, doc->text.f_str + i,
-			doc->text.f_str + doc->text.f_len, &str, &offset);
+			doc->text.f_str + doc->text.f_len, &str, &offset,
+			&n_chars);
 
 		ut_a(inc > 0);
 
 		/* Ignore string whose character number is less than
 		"fts_min_token_size" or more than "fts_max_token_size" */
-		if (str.f_n_char < fts_min_token_size
-		    || str.f_n_char > fts_max_token_size) {
+		if (n_chars < fts_min_token_size
+		    || n_chars > fts_max_token_size) {
 
 			t_ctx->processed_len += inc;
 			continue;
@@ -1083,7 +1084,6 @@ row_fts_insert_tuple(
 	/* Get the first field for the tokenized word */
 	dfield = dtuple_get_nth_field(dtuple, 0);
 
-	token_word.f_n_char = 0;
 	token_word.f_len = dfield->len;
 	token_word.f_str = static_cast<byte*>(dfield_get_data(dfield));
 

@@ -386,20 +386,25 @@ innobase_close_thd(
 /*===============*/
 	THD*	thd);		/*!< in: MySQL thread handle for
 				which to close the connection */
-/*************************************************************//**
-Get the next token from the given string and store it in *token. */
+
+/** Get the next token from the given string and store it in *token.
+It is mostly copied from MyISAM's doc parsing function ft_simple_get_word()
+@param[in]	cs	Character set
+@param[in]	start	start of tex
+@param[in]	end	one character past end of text
+@param[out]	token	token's text
+@param[out]	offset	offset to token, measured as characters from 'start'
+@param[out]	n_chars	number of characters existed
+@return length of string processed */
 UNIV_INTERN
 ulint
 innobase_mysql_fts_get_token(
-/*=========================*/
-	CHARSET_INFO*	charset,	/*!< in: Character set */
-	const byte*	start,		/*!< in: start of text */
-	const byte*	end,		/*!< in: one character past end of
-					text */
-	fts_string_t*	token,		/*!< out: token's text */
-	ulint*		offset);	/*!< out: offset to token,
-					measured as characters from
-					'start' */
+	CHARSET_INFO*	cs,
+	const byte*	start,
+	const byte*	end,
+	fts_string_t*	token,
+	ulint*		offset,
+	ulint*		n_chars=NULL);
 
 /******************************************************************//**
 compare two character string case insensitively according to their charset. */
