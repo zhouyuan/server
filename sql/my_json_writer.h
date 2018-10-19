@@ -12,8 +12,10 @@
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02111-1301 USA */
-
+class Opt_trace_stmt;
+class Opt_trace_context;
 class Json_writer;
+struct TABLE_LIST;
 
 /*
   Single_line_formatting_helper is used by Json_writer to do better formatting
@@ -106,12 +108,15 @@ public:
   /* Add atomic values */
   void add_str(const char* val);
   void add_str(const String &str);
+  void add_str(Item *item);
 
   void add_ll(longlong val);
   void add_size(longlong val);
   void add_double(double val);
   void add_bool(bool val);
   void add_null();
+  void add_table_name(TABLE_LIST *tab);
+
 
 private:
   void add_unquoted_str(const char* val);
@@ -129,6 +134,12 @@ public:
   {
     fmt_helper.init(this);
   }
+  Json_writer(Opt_trace_context *ctx):indent_level(0), document_start(true),
+    element_started(false), first_child(true)
+  {
+    fmt_helper.init(this);
+    do_construct(ctx);
+  }
 private:
   // TODO: a stack of (name, bool is_object_or_array) elements.
   int indent_level;
@@ -145,10 +156,12 @@ private:
   void append_indent();
   void start_element();
   void start_sub_element();
+  void do_construct(Opt_trace_context* ctx);
 
   //const char *new_member_name;
 public:
   String output;
+  Opt_trace_stmt *stmt;  ///< Trace owning the structure
 };
 
 
@@ -170,6 +183,56 @@ public:
     // entered.
   }
 */
+
+class Json_writer_object
+{
+public:
+  Json_writer_object(Json_writer *w)
+  {
+    my_writer= w;
+    if (w)
+      w->start_object();
+  }
+   Json_writer_object(Json_writer *w, const char *str)
+  {
+    my_writer= w;
+    if (my_writer)
+    w->add_member(str).start_object();
+  }
+
+  ~Json_writer_object() {
+    if (my_writer)
+      my_writer->end_object();
+  }
+private:
+  Json_writer *my_writer;
+};
+
+
+class Json_writer_array
+{
+public:
+  Json_writer_array(Json_writer *w)
+  {
+    my_writer= w;
+    if (w)
+      w->start_array();
+  }
+
+  Json_writer_array(Json_writer *w, const char *str)
+  {
+    my_writer= w;
+    if (my_writer)
+    w->add_member(str).start_array();
+  }
+  ~Json_writer_array() {
+    if (my_writer)
+    my_writer->end_array();
+  }
+private:
+  Json_writer *my_writer;
+};
+
 
 class Json_writer_nesting_guard
 {

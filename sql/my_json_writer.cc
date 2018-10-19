@@ -15,8 +15,8 @@
 
 #include "mariadb.h"
 #include "sql_priv.h"
+#include "sql_array.h"
 #include "sql_string.h"
-
 #include "my_json_writer.h"
 
 void Json_writer::append_indent()
