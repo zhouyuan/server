@@ -64,6 +64,8 @@
 #include "sys_vars_shared.h"
 #include "sp_head.h"
 #include "sp_rcontext.h"
+#include "my_json_writer.h"
+#include "opt_trace.h"
 
 /*
   A key part number that means we're using a fulltext scan.
@@ -991,6 +993,14 @@ JOIN::prepare(TABLE_LIST *tables_init,
   join_list= &select_lex->top_join_list;
   union_part= unit_arg->is_unit_op();
 
+  Opt_trace_context *const trace = &thd->opt_trace;
+  Json_writer *writer= trace->get_current_json();
+  Json_writer_object trace_wrapper(writer);
+  Json_writer_object trace_prepare(writer, "join_preparation");
+  if (writer)
+    writer->add_member("select_id").add_ll(select_lex->select_number);
+  Json_writer_array trace_steps(writer, "steps");
+
   // simple check that we got usable conds
   dbug_print_item(conds);
 
@@ -1333,6 +1343,15 @@ JOIN::prepare(TABLE_LIST *tables_init,
     }
   }
 
+  {
+    Json_writer_object trace_wrapper(writer);
+    if (writer)
+    {
+      writer->add_member("expanded_query");
+      opt_trace_print_expanded_query(thd, select_lex, writer);
+    }
+  }
+
   if (!procedure && result && result->prepare(fields_list, unit_arg))
     goto err;					/* purecov: inspected */
 
@@ -1513,6 +1532,14 @@ JOIN::optimize_inner()
 
   set_allowed_join_cache_types();
   need_distinct= TRUE;
+
+  Opt_trace_context *const trace = &thd->opt_trace;
+  Json_writer *writer= trace->get_current_json();
+  Json_writer_object trace_wrapper(writer);
+  Json_writer_object trace_prepare(writer, "join_optimization");
+  if (writer)
+    writer->add_member("select_id").add_ll(select_lex->select_number);
+  Json_writer_array trace_steps(writer, "steps");
 
   /*
     Needed in case optimizer short-cuts,
@@ -3909,6 +3936,15 @@ void JOIN::exec_inner()
         limit in order to produce the partial query result stored in the
         UNION temp table.
   */
+  
+  Opt_trace_context *const trace = &thd->opt_trace;
+  Json_writer *writer= trace->get_current_json();
+  Json_writer_object trace_wrapper(writer);
+  Json_writer_object trace_prepare(writer, "join_execution");
+  if (writer)
+    writer->add_member("select_id").add_ll(select_lex->select_number);
+  Json_writer_array trace_steps(writer, "steps");
+
   if (!select_lex->outer_select() &&                            // (1)
       select_lex != select_lex->master_unit()->fake_select_lex) // (2)
     thd->lex->set_limit_rows_examined();
@@ -15866,12 +15902,30 @@ optimize_cond(JOIN *join, COND *conds,
       that occurs in a function set a pointer to the multiple equality
       predicate. Substitute a constant instead of this field if the
       multiple equality contains a constant.
-    */ 
-    DBUG_EXECUTE("where", print_where(conds, "original", QT_ORDINARY););
+    */
+
+    Opt_trace_context *const trace = &thd->opt_trace;
+    Json_writer *writer= trace->get_current_json();
+    Json_writer_object trace_wrapper(writer);
+    Json_writer_object trace_cond(writer, "condition_processing");
+    if (writer)
+    {
+      writer->add_member("condition").add_str(join->conds == conds ? "WHERE" : "HAVING");
+      writer->add_member("original_condition").add_str(conds);
+    }
+    Json_writer_array trace_steps(writer, "steps");
+      DBUG_EXECUTE("where", print_where(conds, "original", QT_ORDINARY););
     conds= build_equal_items(join, conds, NULL, join_list, 
                              ignore_on_conds, cond_equal,
                              MY_TEST(flags & OPT_LINK_EQUAL_FIELDS));
     DBUG_EXECUTE("where",print_where(conds,"after equal_items", QT_ORDINARY););
+
+    if (writer)
+    {
+      Json_writer_object step_wrapper(writer);
+      writer->add_member("transformation").add_str("equality_propagation");
+      writer->add_member("resulting_condition").add_str(conds);
+    }
 
     /* change field = field to field = const for each found field = const */
     propagate_cond_constants(thd, (I_List<COND_CMP> *) 0, conds, conds);
@@ -15880,10 +15934,24 @@ optimize_cond(JOIN *join, COND *conds,
       Remove all and-levels where CONST item != CONST item
     */
     DBUG_EXECUTE("where",print_where(conds,"after const change", QT_ORDINARY););
+    if (writer)
+    {
+      Json_writer_object step_wrapper(writer);
+      writer->add_member("transformation").add_str("constant_propagation");
+      writer->add_member("resulting_condition").add_str(conds);
+    }
+
     conds= conds->remove_eq_conds(thd, cond_value, true);
     if (conds && conds->type() == Item::COND_ITEM &&
         ((Item_cond*) conds)->functype() == Item_func::COND_AND_FUNC)
       *cond_equal= &((Item_cond_and*) conds)->m_cond_equal;
+    
+    if (writer)
+    {
+      Json_writer_object step_wrapper(writer);
+      writer->add_member("transformation").add_str("trivial_condition_removal");
+      writer->add_member("resulting_condition").add_str(conds);
+    }
     DBUG_EXECUTE("info",print_where(conds,"after remove", QT_ORDINARY););
   }
   DBUG_RETURN(conds);
@@ -25978,7 +26046,8 @@ void TABLE_LIST::print(THD *thd, table_map eliminated_tables, String *str,
       // A view
 
       if (!(belong_to_view &&
-            belong_to_view->compact_view_format))
+            belong_to_view->compact_view_format) &&
+        !(query_type & QT_ITEM_IDENT_SKIP_DB_NAMES))
       {
         append_identifier(thd, str, &view_db);
         str->append('.');
@@ -26007,7 +26076,8 @@ void TABLE_LIST::print(THD *thd, table_map eliminated_tables, String *str,
       // A normal table
 
       if (!(belong_to_view &&
-            belong_to_view->compact_view_format))
+            belong_to_view->compact_view_format) && 
+         !(query_type & QT_ITEM_IDENT_SKIP_DB_NAMES))
       {
         append_identifier(thd, str, &db);
         str->append('.');

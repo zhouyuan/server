@@ -32,6 +32,7 @@
 #include "sql_acl.h"                          // SELECT_ACL
 #include "sql_class.h"
 #include "sql_cte.h"
+#include "my_json_writer.h"
 
 typedef bool (*dt_processor)(THD *thd, LEX *lex, TABLE_LIST *derived);
 
@@ -197,6 +198,21 @@ mysql_handle_single_derived(LEX *lex, TABLE_LIST *derived, uint phases)
 
     if ((res= (*processors[phase])(lex->thd, lex, derived)))
       break;
+  }
+
+  if (phases == DT_MERGE)
+  {
+    Opt_trace_context *const trace = &thd->opt_trace;
+    Json_writer *writer= trace->get_current_json();
+    Json_writer_object trace_wrapper(writer);
+    Json_writer_object trace_derived(writer, derived->is_derived() ? 
+                                     "derived" : "view");
+    if (writer)
+    {
+      writer->add_member("table").add_str(derived->alias.str ? derived->alias.str : "<NULL>");
+      writer->add_member("select_id").add_ll(derived->get_unit()->first_select()->select_number);
+      writer->add_member("merged").add_bool(derived->is_merged_derived());
+    }
   }
   lex->thd->derived_tables_processing= FALSE;
   DBUG_RETURN(res);
