@@ -28,7 +28,7 @@
 #include "rpl_tblmap.h"
 #include "mdl.h"
 #include "field.h"                              // Create_field
-#include "opt_trace.h"
+#include "opt_trace_context.h"
 #include "probes_mysql.h"
 #include "sql_locale.h"     /* my_locale_st */
 #include "sql_profile.h"    /* PROFILING */
@@ -2973,6 +2973,7 @@ public:
   ulonglong  bytes_sent_old;
   ulonglong  affected_rows;                     /* Number of changed rows */
 
+  Opt_trace_context opt_trace;
   pthread_t  real_id;                           /* For debugging */
   my_thread_id  thread_id, thread_dbug_id;
   uint32      os_thread_id;
