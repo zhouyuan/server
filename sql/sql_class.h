@@ -556,6 +556,7 @@ typedef struct system_variables
   ulonglong long_query_time;
   ulonglong max_statement_time;
   ulonglong optimizer_switch;
+  ulonglong optimizer_trace;
   sql_mode_t sql_mode; ///< which non-standard SQL behaviour should be enabled
   sql_mode_t old_behavior; ///< which old SQL behaviour should be enabled
   ulonglong option_bits; ///< OPTION_xxx constants, e.g. OPTION_PROFILING
