@@ -344,6 +344,38 @@ bool dbug_user_var_equals_int(THD *thd, const char *name, int value)
 }
 #endif
 
+static void trace_table_dependencies(Opt_trace_context *trace,
+                                     JOIN_TAB *join_tabs, uint table_count)
+{
+  Json_writer* writer= trace->get_current_json();
+  Json_writer_object trace_wrapper(writer);
+  Json_writer_array trace_dep(writer, "table_dependencies");
+  for (uint i = 0; i < table_count; i++) 
+  {
+    TABLE_LIST *table_ref = join_tabs[i].tab_list;
+    Json_writer_object trace_one_table(writer);
+    trace_one_table.add_member("table").add_table_name(table_ref);
+    trace_one_table.add_member("row_may_be_null").add_bool(table_ref->table->maybe_null);
+    const table_map map = table_ref->get_map();
+    DBUG_ASSERT(map < (1ULL << table_count));
+    for (uint j = 0; j < table_count; j++)
+    {
+      if (map & (1ULL << j)) {
+        trace_one_table.add_member("map_bit").add_ll(j);
+        break;
+      }
+    }
+    Json_writer_array depends_on(writer, "depends_on_map_bits");
+    static_assert(sizeof(table_ref->get_map()) <= 64,
+                  "RAND_TABLE_BIT may be in join_tabs[i].dependent, so we test "
+                  "all 64 bits.");
+    for (uint j = 0; j < 64; j++) 
+    {
+      if (join_tabs[i].dependent & (1ULL << j)) depends_on.add_ll(j);
+    }
+  }
+}
+
 
 /**
   This handles SELECT with and without UNION.
@@ -997,8 +1029,7 @@ JOIN::prepare(TABLE_LIST *tables_init,
   Json_writer *writer= trace->get_current_json();
   Json_writer_object trace_wrapper(writer);
   Json_writer_object trace_prepare(writer, "join_preparation");
-  if (writer)
-    writer->add_member("select_id").add_ll(select_lex->select_number);
+  trace_prepare.add_member("select_id").add_ll(select_lex->select_number);
   Json_writer_array trace_steps(writer, "steps");
 
   // simple check that we got usable conds
@@ -1345,11 +1376,9 @@ JOIN::prepare(TABLE_LIST *tables_init,
 
   {
     Json_writer_object trace_wrapper(writer);
-    if (writer)
-    {
-      writer->add_member("expanded_query");
-      opt_trace_print_expanded_query(thd, select_lex, writer);
-    }
+    trace_wrapper.add_member("expanded_query");
+    opt_trace_print_expanded_query(thd, select_lex, &trace_wrapper);
+    
   }
 
   if (!procedure && result && result->prepare(fields_list, unit_arg))
@@ -1537,8 +1566,7 @@ JOIN::optimize_inner()
   Json_writer *writer= trace->get_current_json();
   Json_writer_object trace_wrapper(writer);
   Json_writer_object trace_prepare(writer, "join_optimization");
-  if (writer)
-    writer->add_member("select_id").add_ll(select_lex->select_number);
+  trace_prepare.add_member("select_id").add_ll(select_lex->select_number);
   Json_writer_array trace_steps(writer, "steps");
 
   /*
@@ -4417,6 +4445,7 @@ make_join_statistics(JOIN *join, List<TABLE_LIST> &tables_list,
   SARGABLE_PARAM *sargables= 0;
   List_iterator<TABLE_LIST> ti(tables_list);
   TABLE_LIST *tables;
+  Opt_trace_context* trace= &join->thd->opt_trace;
   DBUG_ENTER("make_join_statistics");
 
   table_count=join->table_count;
@@ -4611,6 +4640,10 @@ make_join_statistics(JOIN *join, List<TABLE_LIST> &tables_list,
       s->key_dependent= s->dependent;
     }
   }
+
+  if (trace->get_current_trace())
+    trace_table_dependencies(trace, stat, join->table_count);
+
 
   if (join->conds || outer_join)
   {

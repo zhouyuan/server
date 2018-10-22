@@ -15,7 +15,7 @@
 
 #include "opt_trace_context.h"  // Opt_trace_context
 #include "sql_lex.h"
-
+#include "my_json_writer.h"
 class Item;
 class THD;
 struct TABLE_LIST;
@@ -101,7 +101,7 @@ class Opt_trace_start {
    @param  trace_object  Json_writer object to which the query will be added
 */
 void opt_trace_print_expanded_query(THD *thd, SELECT_LEX *select_lex,
-                                    Json_writer *trace_object);
+                                    Json_writer_struct *trace_object);
 /**
    Fills information_schema.OPTIMIZER_TRACE with rows (one per trace)
    @retval 0 ok

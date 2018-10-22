@@ -205,6 +205,46 @@ void Json_writer::add_str(const String &str)
 }
 
 
+Json_writer_object::Json_writer_object(Json_writer *writer):Json_writer_struct(writer)
+{
+  if (my_writer)
+    my_writer->start_object();
+}
+
+Json_writer_object::Json_writer_object(Json_writer *writer, const char *str)
+                                       :Json_writer_struct(writer)
+{
+  if (my_writer)
+    my_writer->add_member(str).start_object();
+
+}
+Json_writer_object::~Json_writer_object()
+{
+  if (my_writer)
+    my_writer->end_object();
+}
+
+
+Json_writer_array::Json_writer_array(Json_writer *writer):Json_writer_struct(writer)
+{
+  if (my_writer)
+    my_writer->start_array();
+}
+
+Json_writer_array::Json_writer_array(Json_writer *writer, const char *str)
+                                       :Json_writer_struct(writer)
+{
+  if (my_writer)
+    my_writer->add_member(str).start_array();
+
+}
+Json_writer_array::~Json_writer_array()
+{
+  if (my_writer)
+    my_writer->end_array();
+}
+
+
 bool Single_line_formatting_helper::on_add_member(const char *name)
 {
   DBUG_ASSERT(state== INACTIVE || state == DISABLED);

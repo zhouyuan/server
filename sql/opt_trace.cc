@@ -100,7 +100,7 @@ inline bool sql_command_can_be_traced(enum enum_sql_command sql_command)
 }
 
 void opt_trace_print_expanded_query(THD *thd, SELECT_LEX *select_lex,
-                                    Json_writer *writer)
+                                    Json_writer_struct *writer)
 
 {
   Opt_trace_context *const trace = &thd->opt_trace;
@@ -114,7 +114,9 @@ void opt_trace_print_expanded_query(THD *thd, SELECT_LEX *select_lex,
   select_lex->print(thd, &str,
                     enum_query_type(QT_TO_SYSTEM_CHARSET |
                                     QT_SHOW_SELECT_NUMBER |
-                                    QT_ITEM_IDENT_SKIP_DB_NAMES));
+                                    QT_ITEM_IDENT_SKIP_DB_NAMES |
+                                    QT_VIEW_INTERNAL
+                                    ));
   writer->add_str(str);
 }
 

@@ -12,6 +12,8 @@
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02111-1301 USA */
+#ifndef JSON_WRITER_INCLUDED
+#define JSON_WRITER_INCLUDED
 class Opt_trace_stmt;
 class Opt_trace_context;
 class Json_writer;
@@ -164,6 +166,69 @@ public:
   Opt_trace_stmt *stmt;  ///< Trace owning the structure
 };
 
+class Json_writer_struct
+{
+protected:
+  Json_writer* my_writer;
+public:
+  Json_writer_struct(Json_writer* writer)
+  {
+    my_writer= writer;
+  }
+  Json_writer_struct& add_member(const char *name)
+  {
+    if (my_writer)
+      my_writer->add_member(name);
+    return *this;
+  }
+  
+  void add_str(const char* val)
+  {
+    if (my_writer)
+      my_writer->add_str(val);
+  }
+  void add_str(const String &str)
+  {
+    if (my_writer)
+      my_writer->add_str(str);
+  }
+  void add_str(Item *item)
+  {
+    if (my_writer)
+      my_writer->add_str(item);
+  }
+
+  void add_ll(longlong val)
+  {
+    if (my_writer)
+      my_writer->add_ll(val);
+  }
+  void add_size(longlong val)
+  {
+    if (my_writer)
+      my_writer->add_size(val);
+  }
+  void add_double(double val)
+  {
+    if (my_writer)
+      my_writer->add_double(val);
+  }
+  void add_bool(bool val)
+  {
+    if (my_writer)
+      my_writer->add_bool(val);
+  }
+  void add_null()
+  {
+    if (my_writer)
+      my_writer->add_null();
+  }
+  void add_table_name(TABLE_LIST *tab)
+  {
+    if (my_writer)
+      my_writer->add_table_name(tab);
+  }
+};
 
 /*
   RAII-based helper class to detect incorrect use of Json_writer.
@@ -184,53 +249,21 @@ public:
   }
 */
 
-class Json_writer_object
+class Json_writer_object:public Json_writer_struct
 {
 public:
-  Json_writer_object(Json_writer *w)
-  {
-    my_writer= w;
-    if (w)
-      w->start_object();
-  }
-   Json_writer_object(Json_writer *w, const char *str)
-  {
-    my_writer= w;
-    if (my_writer)
-    w->add_member(str).start_object();
-  }
-
-  ~Json_writer_object() {
-    if (my_writer)
-      my_writer->end_object();
-  }
-private:
-  Json_writer *my_writer;
+  Json_writer_object(Json_writer *w);
+  Json_writer_object(Json_writer *w, const char *str);
+  ~Json_writer_object();
 };
 
 
-class Json_writer_array
+class Json_writer_array:public Json_writer_struct
 {
 public:
-  Json_writer_array(Json_writer *w)
-  {
-    my_writer= w;
-    if (w)
-      w->start_array();
-  }
-
-  Json_writer_array(Json_writer *w, const char *str)
-  {
-    my_writer= w;
-    if (my_writer)
-    w->add_member(str).start_array();
-  }
-  ~Json_writer_array() {
-    if (my_writer)
-    my_writer->end_array();
-  }
-private:
-  Json_writer *my_writer;
+  Json_writer_array(Json_writer *w);
+  Json_writer_array(Json_writer *w, const char *str);
+  ~Json_writer_array();
 };
 
 
@@ -254,5 +287,5 @@ public:
   }
 #endif
 };
-
+#endif
 

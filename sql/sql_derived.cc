@@ -200,6 +200,11 @@ mysql_handle_single_derived(LEX *lex, TABLE_LIST *derived, uint phases)
       break;
   }
 
+  /*
+    Add to optimizer trace whether a derived table/view 
+    is merged into the parent select or not.
+  */
+
   if (phases == DT_MERGE)
   {
     Opt_trace_context *const trace = &thd->opt_trace;
