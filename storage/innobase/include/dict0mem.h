@@ -1666,7 +1666,7 @@ struct dict_table_t {
 #ifdef UNIV_DEBUG
 		lint fk_checks= (lint)
 #endif
-		my_atomic_addlint(&n_foreign_key_checks_running, 1);
+		n_foreign_key_checks_running.inc();
 		ut_ad(fk_checks >= 0);
 	}
 	void dec_fk_checks()
@@ -1674,7 +1674,7 @@ struct dict_table_t {
 #ifdef UNIV_DEBUG
 		lint fk_checks= (lint)
 #endif
-		my_atomic_addlint(&n_foreign_key_checks_running, ulint(-1));
+		n_foreign_key_checks_running.dec();
 		ut_ad(fk_checks > 0);
 	}
 
@@ -1845,7 +1845,7 @@ struct dict_table_t {
 	/** Count of how many foreign key check operations are currently being
 	performed on the table. We cannot drop the table while there are
 	foreign key checks running on it. */
-	ulint					n_foreign_key_checks_running;
+	simple_atomic_counter<>			n_foreign_key_checks_running;
 
 	/** Transactions whose view low limit is greater than this number are
 	not allowed to store to the MySQL query cache or retrieve from it.
