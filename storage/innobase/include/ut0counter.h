@@ -166,6 +166,9 @@ struct MY_ALIGNED(CPU_LEVEL1_DCACHE_LINESIZE) simple_atomic_counter
 		return m_counter.fetch_sub(i, std::memory_order_relaxed);
 	}
 
+	/** Reset the counter */
+	void reset() { m_counter.store(0, std::memory_order_relaxed); }
+
 	/** @return the value of the counter */
 	operator Type() const
 	{

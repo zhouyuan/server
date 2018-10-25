@@ -217,7 +217,7 @@ trx_sys_t::create()
 	m_initialised = true;
 	mutex_create(LATCH_ID_TRX_SYS, &mutex);
 	UT_LIST_INIT(trx_list, &trx_t::trx_list);
-	my_atomic_store32(&rseg_history_len, 0);
+	rseg_history_len.reset();
 
 	rw_trx_hash.init();
 }
