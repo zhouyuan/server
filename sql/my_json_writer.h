@@ -166,6 +166,8 @@ public:
   Opt_trace_stmt *stmt;  ///< Trace owning the structure
 };
 
+
+/* A common base for Json_writer_object and Json_writer_array */
 class Json_writer_struct
 {
 protected:
@@ -230,6 +232,32 @@ public:
   }
 };
 
+
+/*
+  RAII-based class to start/end writing a JSON object into the JSON document
+*/
+
+class Json_writer_object:public Json_writer_struct
+{
+public:
+  Json_writer_object(Json_writer *w);
+  Json_writer_object(Json_writer *w, const char *str);
+  ~Json_writer_object();
+};
+
+
+/*
+  RAII-based class to start/end writing a JSON array into the JSON document
+*/
+class Json_writer_array:public Json_writer_struct
+{
+public:
+  Json_writer_array(Json_writer *w);
+  Json_writer_array(Json_writer *w, const char *str);
+  ~Json_writer_array();
+};
+
+
 /*
   RAII-based helper class to detect incorrect use of Json_writer.
 
@@ -248,24 +276,6 @@ public:
     // entered.
   }
 */
-
-class Json_writer_object:public Json_writer_struct
-{
-public:
-  Json_writer_object(Json_writer *w);
-  Json_writer_object(Json_writer *w, const char *str);
-  ~Json_writer_object();
-};
-
-
-class Json_writer_array:public Json_writer_struct
-{
-public:
-  Json_writer_array(Json_writer *w);
-  Json_writer_array(Json_writer *w, const char *str);
-  ~Json_writer_array();
-};
-
 
 class Json_writer_nesting_guard
 {
