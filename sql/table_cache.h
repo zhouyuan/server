@@ -86,7 +86,8 @@ extern TABLE_SHARE *tdc_acquire_share(THD *thd, TABLE_LIST *tl, uint flags,
 extern void tdc_release_share(TABLE_SHARE *share);
 extern bool tdc_remove_table(THD *thd, enum_tdc_remove_table_type remove_type,
                              const char *db, const char *table_name,
-                             bool kill_delayed_threads);
+                             bool kill_delayed_threads,
+                             bool flush_table_shares);
 
 extern int tdc_wait_for_old_version(THD *thd, const char *db,
                                     const char *table_name,
