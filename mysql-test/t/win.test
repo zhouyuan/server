@@ -58,7 +58,8 @@ select
   pk, a, b,
   row_number() over (order by a),
   row_number() over (order by b)
-from t1;
+from t1
+order by b;
 
 drop table t1;
 
@@ -1018,6 +1019,7 @@ insert into t1 values
 
 --echo #  Check using counters
 flush status;
+--sorted_result
 select
   rank() over (partition by c order by a),
   rank() over (partition by c order by b)
@@ -1025,6 +1027,7 @@ from t1;
 show status like '%sort%';
 
 flush status;
+--sorted_result
 select
   rank() over (partition by c order by a),
   rank() over (partition by c order by a)
@@ -1096,6 +1099,7 @@ insert into t1 values
   (2,2),
   (3,1);
 
+--sorted_result
 select
   a, b,
   rank() over (order by a), rank() over (order by b),
@@ -1187,6 +1191,7 @@ insert into t1 values (4,'a');
 insert into t1 values (2,'b');
 insert into t1 values (-1,'');
 
+--sorted_result
 select
   *,
   ROW_NUMBER() OVER (order by s1),
