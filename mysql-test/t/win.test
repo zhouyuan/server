@@ -391,7 +391,6 @@ insert into t3 values
 (6, 2);
 
 select
-  pk,
   val,
   count(val) over (order by val
                  range between current row and
@@ -404,7 +403,6 @@ insert into t3 values
 (8, 3);
 
 select
-  pk,
   val,
   count(val) over (order by val
                  range between current row and
@@ -444,7 +442,6 @@ insert into t4 values
 
 select
   part_id,
-  pk,
   val,
   count(val) over (partition by part_id
                    order by val
@@ -458,7 +455,6 @@ from t4;
 --echo #
 select
   part_id,
-  pk,
   val,
   count(val) over (partition by part_id
                    order by val
@@ -469,7 +465,6 @@ from t4;
 
 select
   part_id,
-  pk,
   val,
   count(val) over (partition by part_id
                    order by val
@@ -480,7 +475,6 @@ from t4;
 
 select
   part_id,
-  pk,
   val,
   count(val) over (partition by part_id
                    order by val
@@ -723,7 +717,8 @@ select
  count(b) over (order by a
                 range between 2 preceding
                           and 2 following) as CNT
-from t1;
+from t1
+order by a, pk;
 drop table t1;
 
 --echo #
@@ -1267,7 +1262,7 @@ from t1;
 drop table t1;
 
 --echo #
---echo # MDEV-10874: two window functions with ccompatible sorting 
+--echo # MDEV-10874: two window functions with compatible sorting
 --echo #
 
 create table t1 (
@@ -2110,10 +2105,12 @@ SET sql_mode = 'ONLY_FULL_GROUP_BY';
 
 SELECT name, test, score,
   AVG(score) OVER (PARTITION BY test) AS average_by_test
-FROM t1;
+FROM t1
+ORDER BY test, name;
 
 set @@sql_mode= @save_sql_mode;
 SELECT name, test, score,
   AVG(score) OVER (PARTITION BY test) AS average_by_test
-FROM t1;
+FROM t1
+ORDER BY test, name;
 drop table t1;
