@@ -320,7 +320,7 @@ DROP TABLE t2,t1;
 SET sql_mode=traditional;
 CREATE TABLE t1 (a TIME(6));
 INSERT INTO t1 VALUES (CAST(0xFFFFFFFF00000000 AS UNSIGNED));
-ERROR 22007: Incorrect time value: '18446744069414584320' for column 'a' at row 1
+ERROR 22007: Incorrect time value: '18446744069414584320' for column 'test.t1.a' at row 1
 SET sql_mode=DEFAULT;
 INSERT IGNORE INTO t1 VALUES (CAST(0xFFFFFFFF00000000 AS UNSIGNED));
 Warnings:
