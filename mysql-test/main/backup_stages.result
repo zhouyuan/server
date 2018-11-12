@@ -1,0 +1,180 @@
+#
+# testing syntax for BACKUP STAGE
+#
+backup stage start;
+backup stage end;
+backup stage not_existing;
+ERROR HY000: Unknown backup stage: 'not_existing'. Stage should be one of START, FLUSH, BLOCK_DDL, BLOCK_COMMIT or END
+backup stage start;
+backup stage flush;
+backup stage start;
+ERROR HY000: Backup stage 'START' is same or before current backup stage 'FLUSH'
+backup stage start;
+ERROR HY000: Backup stage 'START' is same or before current backup stage 'FLUSH'
+backup stage block_commit;
+backup stage flush;
+ERROR HY000: Backup stage 'FLUSH' is same or before current backup stage 'BLOCK_COMMIT'
+backup stage flush;
+ERROR HY000: Backup stage 'FLUSH' is same or before current backup stage 'BLOCK_COMMIT'
+backup stage end;
+backup stage flush;
+ERROR HY000: You must start backup with "BACKUP STAGE START"
+#
+# Check backup and FTWRL
+#
+flush tables with read lock;
+backup stage start;
+ERROR HY000: Can't execute the query because you have a conflicting read lock
+unlock tables;
+backup stage start;
+flush tables with read lock;
+ERROR HY000: Can't execute the command as you have a BACKUP STAGE active
+backup stage end;
+#
+# Check Oracle syntax
+#
+set SQL_MODE=Oracle;
+backup stage start;
+backup stage end;
+set SQL_MODE=default;
+#
+# Check BACKUP STAGE under lock tables
+#
+create table t1 (a int);
+lock table t1 write;
+backup stage start;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+backup stage end;
+ERROR HY000: You must start backup with "BACKUP STAGE START"
+unlock tables;
+lock table t1 read;
+backup stage start;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+backup stage end;
+ERROR HY000: You must start backup with "BACKUP STAGE START"
+unlock tables;
+#
+# Check lock tables under BACKUP STAGE
+#
+backup stage start;
+unlock tables;
+select lock_mode from information_schema.metadata_lock_info;
+lock_mode
+MDL_BACKUP_START
+lock table t1 write;
+ERROR HY000: Can't execute the command as you have a BACKUP STAGE active
+lock table t1 read;
+ERROR HY000: Can't execute the command as you have a BACKUP STAGE active
+unlock tables;
+backup stage end;
+drop table t1;
+#
+# Check setting readonly under BACKUP STAGE
+#
+backup stage start;
+set @@global.read_only=1;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+backup stage end;
+# also make sure going back from read-only mode is not allowed
+set @@global.read_only=1;
+backup stage start;
+set @@global.read_only=0;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+backup stage end;
+set @@global.read_only=0;
+#
+# Check BACKUP STAGE under read_only
+#
+set @@global.read_only=1;
+backup stage start;
+backup stage end;
+set @@global.read_only=0;
+#
+# Check that we can't create tables during backup
+#
+backup stage start;
+create table t1 (a int);
+ERROR HY000: Can't execute the command as you have a BACKUP STAGE active
+backup stage end;
+# also make sure we can't write to a table during backup
+create table t1(a INT);
+backup stage start;
+insert into t1 values(1);
+ERROR HY000: Can't execute the command as you have a BACKUP STAGE active
+insert delayed into t1 values(1);
+ERROR HY000: Can't execute the command as you have a BACKUP STAGE active
+update t1 set a=1;
+ERROR HY000: Can't execute the command as you have a BACKUP STAGE active
+delete from t1;
+ERROR HY000: Can't execute the command as you have a BACKUP STAGE active
+truncate table t1;
+ERROR HY000: Can't execute the command as you have a BACKUP STAGE active
+drop table t1;
+ERROR HY000: Can't execute the command as you have a BACKUP STAGE active
+backup stage end;
+drop table t1;
+#
+# CHECK: BACKUP STAGE must perform implicit commit
+#
+create table t1(a int) engine=InnoDB;
+begin;
+insert into t1 values(1);
+select lock_mode from information_schema.metadata_lock_info;
+lock_mode
+MDL_SHARED_WRITE
+backup stage start;
+select lock_mode from information_schema.metadata_lock_info;
+lock_mode
+MDL_BACKUP_START
+backup stage block_commit;
+commit;
+backup stage end;
+#
+# CHECK: RO transaction under BACKUP STAGE is a potential deadlock
+# OTOH we most probably allow them under FTWRL as well
+#
+backup stage start;
+backup stage block_commit;
+begin;
+select * from t1;
+a
+1
+select lock_mode from information_schema.metadata_lock_info;
+lock_mode
+MDL_BACKUP_WAIT_COMMIT
+MDL_SHARED_READ
+backup stage end;
+select lock_mode from information_schema.metadata_lock_info;
+lock_mode
+drop table t1;
+#
+# Check TEMPORARY TABLES
+#
+BACKUP STAGE START;
+BACKUP STAGE BLOCK_DDL;
+FLUSH TABLES;
+CREATE TEMPORARY TABLE tmp (col1 INT);
+DROP TEMPORARY TABLE tmp;
+BACKUP STAGE END;
+#
+# Testing which locks we get from all stages
+#
+BACKUP STAGE START;
+SELECT LOCK_MODE, LOCK_TYPE, TABLE_SCHEMA, TABLE_NAME FROM information_schema.metadata_lock_info;
+LOCK_MODE	LOCK_TYPE	TABLE_SCHEMA	TABLE_NAME
+MDL_BACKUP_START	Backup lock		
+BACKUP STAGE FLUSH;
+SELECT LOCK_MODE, LOCK_TYPE, TABLE_SCHEMA, TABLE_NAME FROM information_schema.metadata_lock_info;
+LOCK_MODE	LOCK_TYPE	TABLE_SCHEMA	TABLE_NAME
+MDL_BACKUP_FLUSH	Backup lock		
+BACKUP STAGE BLOCK_DDL;
+SELECT LOCK_MODE, LOCK_TYPE, TABLE_SCHEMA, TABLE_NAME FROM information_schema.metadata_lock_info;
+LOCK_MODE	LOCK_TYPE	TABLE_SCHEMA	TABLE_NAME
+MDL_BACKUP_WAIT_DDL	Backup lock		
+BACKUP STAGE BLOCK_COMMIT;
+SELECT LOCK_MODE, LOCK_TYPE, TABLE_SCHEMA, TABLE_NAME FROM information_schema.metadata_lock_info;
+LOCK_MODE	LOCK_TYPE	TABLE_SCHEMA	TABLE_NAME
+MDL_BACKUP_WAIT_COMMIT	Backup lock		
+BACKUP STAGE END;
+SELECT LOCK_MODE, LOCK_TYPE, TABLE_SCHEMA, TABLE_NAME FROM information_schema.metadata_lock_info;
+LOCK_MODE	LOCK_TYPE	TABLE_SCHEMA	TABLE_NAME
