@@ -685,10 +685,63 @@ static int mysql_tmpfile_path(const char *path, const char *prefix)
 static void innodb_remember_check_sysvar_funcs();
 mysql_var_check_func check_sysvar_enum;
 
+/** Validate passed-in "value" is a valid encryption key_id
+found from encryption plugin.
+This function is registered as a callback with MySQL.
+@param[in,out]	thd	thread handle
+@param[in]	var	pointer to system variable
+@param[out]	save	immediate result for validate
+@param[in]	value	incoming string
+@return 0 for valid key_id */
+static
+int
+innodb_default_encryption_key_id_validate(
+	THD*				thd,
+	struct st_mysql_sys_var*	var,
+	void*				save,
+	struct st_mysql_value*		value)
+{
+	long long key_id_buf;
+	uint key_id;
+
+	if (value->val_int(value, &key_id_buf)) {
+		/* The value is NULL. That is invalid. */
+		return 1;
+	}
+
+	if (key_id_buf < 1 || key_id_buf > UINT_MAX32) {
+		/* Out of range */
+		return 1;
+	}
+
+	*reinterpret_cast<uint*>(save) = key_id = static_cast<uint>(key_id_buf);
+
+	/* Default encryption key_id must be found from encryption
+	plugin keys. */
+	if (key_id != FIL_DEFAULT_ENCRYPTION_KEY
+	    && !encryption_key_id_exists(key_id)) {
+		push_warning_printf(
+			thd, Sql_condition::WARN_LEVEL_WARN,
+			ER_WRONG_ARGUMENTS,
+			"innodb_default_encryption_key_id=%u not available in the encryption plugin",
+			key_id);
+		return 1;
+	}
+
+	return 0;
+}
+
 static MYSQL_THDVAR_UINT(default_encryption_key_id, PLUGIN_VAR_RQCMDARG,
 			 "Default encryption key id used for table encryption.",
-			 NULL, NULL,
+			 innodb_default_encryption_key_id_validate,
+			 NULL,
 			 FIL_DEFAULT_ENCRYPTION_KEY, 1, UINT_MAX32, 0);
+
+/** @return innodb_default_encryption_key_id */
+UNIV_INTERN uint innodb_default_encryption_key_id()
+{
+	return(THDVAR(NULL, default_encryption_key_id));
+}
 
 /**
   Structure for CREATE TABLE options (table options).
@@ -3428,6 +3481,7 @@ innobase_init(
 	char		*default_path;
 	uint		format_id;
 	ulong		num_pll_degree;
+	uint		key_id = FIL_DEFAULT_ENCRYPTION_KEY;
 
 	DBUG_ENTER("innobase_init");
 	handlerton *innobase_hton= (handlerton*) p;
@@ -3589,6 +3643,14 @@ innobase_init(
 	     && !encryption_key_id_exists(FIL_DEFAULT_ENCRYPTION_KEY)) {
 		sql_print_error("InnoDB: cannot enable encryption, "
 				"encryption plugin is not available");
+		goto error;
+	}
+
+	key_id = THDVAR(NULL, default_encryption_key_id);
+	if (key_id != FIL_DEFAULT_ENCRYPTION_KEY
+	    && !encryption_key_id_exists(key_id)) {
+		sql_print_error("innodb_default_encryption_key_id=%u is "
+			"unavailable in the encryption plugin", key_id);
 		goto error;
 	}
 
@@ -11937,12 +11999,12 @@ ha_innobase::check_table_options(
 	}
 
 	/* Ignore nondefault key_id if encryption is set off */
-	if (encrypt == FIL_ENCRYPTION_OFF &&
-		options->encryption_key_id != THDVAR(thd, default_encryption_key_id)) {
+	if (encrypt == FIL_ENCRYPTION_OFF
+	    && options->encryption_key_id != THDVAR(thd, default_encryption_key_id)) {
 		push_warning_printf(
 			thd, Sql_condition::WARN_LEVEL_WARN,
 			HA_WRONG_CREATE_OPTION,
-			"InnoDB: Ignored ENCRYPTION_KEY_ID %u when encryption is disabled",
+			"InnoDB: Ignored ENCRYPTION_KEY_ID=%u when encryption is disabled",
 			(uint)options->encryption_key_id
 		);
 		options->encryption_key_id = FIL_DEFAULT_ENCRYPTION_KEY;

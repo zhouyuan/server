@@ -1,0 +1,2 @@
+--innodb-tablespaces-encryption
+--innodb-encrypt-tables=OFF

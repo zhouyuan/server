@@ -1,0 +1,54 @@
+call mtr.add_suppression("innodb_default_encryption_key_id=999 is unavailable in the encryption plugin");
+call mtr.add_suppression("Plugin 'InnoDB' init function returned error.");
+call mtr.add_suppression("Plugin 'InnoDB' registration as a STORAGE ENGINE failed.");
+SET GLOBAL innodb_file_format = `Barracuda`;
+SET GLOBAL innodb_file_per_table = ON;
+create table t1 (a int not null primary key) engine=InnoDB;
+create table t2 (a int not null primary key) encrypted=yes engine=InnoDB;
+SET GLOBAL innodb_default_encryption_key_id = -1;
+ERROR 42000: Variable 'innodb_default_encryption_key_id' can't be set to the value of '-1'
+SHOW WARNINGS;
+Level	Code	Message
+Error	1231	Variable 'innodb_default_encryption_key_id' can't be set to the value of '-1'
+SET GLOBAL innodb_default_encryption_key_id = 4294967296;
+ERROR 42000: Variable 'innodb_default_encryption_key_id' can't be set to the value of '4294967296'
+SHOW WARNINGS;
+Level	Code	Message
+Error	1231	Variable 'innodb_default_encryption_key_id' can't be set to the value of '4294967296'
+SET GLOBAL innodb_default_encryption_key_id = 'k';
+ERROR 42000: Incorrect argument type to variable 'innodb_default_encryption_key_id'
+SHOW WARNINGS;
+Level	Code	Message
+Error	1232	Incorrect argument type to variable 'innodb_default_encryption_key_id'
+SET GLOBAL innodb_default_encryption_key_id = 999;
+ERROR 42000: Variable 'innodb_default_encryption_key_id' can't be set to the value of '999'
+SHOW WARNINGS;
+Level	Code	Message
+Warning	1210	innodb_default_encryption_key_id=999 not available in the encryption plugin
+Error	1231	Variable 'innodb_default_encryption_key_id' can't be set to the value of '999'
+SET GLOBAL innodb_default_encryption_key_id = 4;
+SET GLOBAL innodb_encryption_threads = 4;
+SET GLOBAL innodb_encrypt_tables = ON;
+SET SESSION innodb_default_encryption_key_id = 2;
+create table t3 (a int not null primary key) engine=InnoDB;
+create table t4 (a int not null primary key) encrypted=yes engine=InnoDB;
+SET SESSION innodb_default_encryption_key_id = 10;
+create table t5 (a int not null primary key) engine=InnoDB;
+create table t6 (a int not null primary key) encrypted=yes engine=InnoDB;
+SELECT NAME,CURRENT_KEY_ID,MIN_KEY_VERSION FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0 ORDER BY NAME;
+NAME	CURRENT_KEY_ID	MIN_KEY_VERSION
+SELECT NAME,CURRENT_KEY_ID,MIN_KEY_VERSION FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0 ORDER BY NAME;
+NAME	CURRENT_KEY_ID	MIN_KEY_VERSION
+./ibdata1	4	1
+mysql/innodb_index_stats	4	1
+mysql/innodb_table_stats	4	1
+test/t1	4	1
+test/t2	1	1
+test/t3	2	1
+test/t4	2	1
+test/t5	10	1
+test/t6	10	1
+# Success!
+DROP TABLE t1, t2, t3, t4, t5, t6;
+# Restart mysqld --innodb_default_encryption_key_id=999
+# Restart mysqld --innodb_default_encryption_key_id=1
