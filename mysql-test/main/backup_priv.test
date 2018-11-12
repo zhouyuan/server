@@ -1,0 +1,38 @@
+--source include/have_innodb.inc
+--source include/not_embedded.inc
+
+--echo #
+--echo # Test privileges for BACKUP STAGES
+--echo #
+
+set sql_mode="";
+
+GRANT RELOAD ON *.* TO user1@localhost;
+GRANT CREATE, DROP ON *.* TO user2@localhost;
+
+--connect(con1, localhost, user1)
+BACKUP STAGE START;
+BACKUP STAGE END;
+--disconnect con1
+--source include/wait_until_disconnected.inc
+
+--connection default
+
+--connect(con1, localhost, user2)
+--error ER_SPECIFIC_ACCESS_DENIED_ERROR
+BACKUP STAGE START;
+--error ER_SPECIFIC_ACCESS_DENIED_ERROR
+BACKUP STAGE END;
+--disconnect con1
+--source include/wait_until_disconnected.inc
+
+--connection default
+DROP USER user1@localhost, user2@localhost;
+
+--echo #
+--echo # Test using BACKUP STAGES in a SP
+--echo #
+
+--error ER_SP_BADSTATEMENT
+create procedure foo42()
+  BACKUP STAGE START;

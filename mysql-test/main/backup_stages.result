@@ -1,0 +1,72 @@
+#
+# testing syntax for BACKUP STAGE
+#
+backup stage start;
+backup stage end;
+backup stage not_existing;
+ERROR HY000: Unknown backup stage: 'not_existing'. Stage should be one of START, FLUSH, BLOCK_DDL, BLOCK_COMMIT or END
+backup stage start;
+backup stage flush;
+backup stage start;
+ERROR HY000: Backup stage 'START' is same or before current backup stage 'FLUSH'
+backup stage start;
+ERROR HY000: Backup stage 'START' is same or before current backup stage 'FLUSH'
+backup stage block_commit;
+backup stage flush;
+ERROR HY000: Backup stage 'FLUSH' is same or before current backup stage 'BLOCK_COMMIT'
+backup stage flush;
+ERROR HY000: Backup stage 'FLUSH' is same or before current backup stage 'BLOCK_COMMIT'
+backup stage end;
+backup stage flush;
+ERROR HY000: You must start backup with "BACKUP STAGE START"
+#
+# Check backup and FTWRL
+#
+flush tables with read lock;
+backup stage start;
+ERROR HY000: Can't execute the query because you have a conflicting read lock
+unlock tables;
+backup stage start;
+flush tables with read lock;
+ERROR HY000: Can't execute the command as you have a BACKUP STAGE active
+backup stage end;
+#
+# Check Oracle syntax
+#
+set SQL_MODE=Oracle;
+backup stage start;
+backup stage end;
+set SQL_MODE=default;
+#
+# Check lock tables
+#
+create table t1 (a int);
+lock table t1 write;
+backup stage start;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+backup stage end;
+ERROR HY000: You must start backup with "BACKUP STAGE START"
+drop table t1;
+#
+# Check setting readonly
+#
+backup stage start;
+set @@global.read_only=1;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+backup stage end;
+#
+# Check that we can't create tables during backup
+#
+backup stage start;
+create table t1 (a int);
+ERROR HY000: Can't execute the command as you have a BACKUP STAGE active
+backup stage end;
+#
+# Check TEMPORARY TABLES
+#
+BACKUP STAGE START ;
+BACKUP STAGE BLOCK_DDL;
+FLUSH TABLES;
+CREATE TEMPORARY TABLE tmp (col1 INT);
+DROP TEMPORARY TABLE tmp;
+BACKUP STAGE END;
