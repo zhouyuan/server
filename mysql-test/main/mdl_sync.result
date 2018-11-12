@@ -2516,7 +2516,7 @@ SET DEBUG_SYNC= 'now WAIT_FOR table_opened';
 # and let DROP PROCEDURE continue
 SELECT LOCK_MODE, LOCK_TYPE, TABLE_SCHEMA, TABLE_NAME FROM information_schema.metadata_lock_info;
 LOCK_MODE	LOCK_TYPE	TABLE_SCHEMA	TABLE_NAME
-MDL_BACKUP_STMT	Backup lock		
+MDL_BACKUP_DDL	Backup lock		
 MDL_EXCLUSIVE	Stored procedure metadata lock	test	p1
 MDL_INTENTION_EXCLUSIVE	Schema metadata lock	test	
 MDL_SHARED_WRITE	Table metadata lock	mysql	proc

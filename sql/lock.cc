@@ -860,9 +860,9 @@ bool lock_schema_name(THD *thd, const char *db)
     return TRUE;
   }
 
-  if (thd->global_read_lock.can_acquire_protection())
+  if (thd->has_read_only_protection())
     return TRUE;
-  global_request.init(MDL_key::BACKUP, "", "", MDL_BACKUP_STMT, MDL_STATEMENT);
+  global_request.init(MDL_key::BACKUP, "", "", MDL_BACKUP_DDL, MDL_STATEMENT);
   mdl_request.init(MDL_key::SCHEMA, db, "", MDL_EXCLUSIVE, MDL_TRANSACTION);
 
   mdl_requests.push_front(&mdl_request);
@@ -918,9 +918,9 @@ bool lock_object_name(THD *thd, MDL_key::enum_mdl_namespace mdl_type,
   DBUG_ASSERT(name);
   DEBUG_SYNC(thd, "before_wait_locked_pname");
 
-  if (thd->global_read_lock.can_acquire_protection())
+  if (thd->has_read_only_protection())
     return TRUE;
-  global_request.init(MDL_key::BACKUP, "", "", MDL_BACKUP_STMT, MDL_STATEMENT);
+  global_request.init(MDL_key::BACKUP, "", "", MDL_BACKUP_DDL, MDL_STATEMENT);
   schema_request.init(MDL_key::SCHEMA, db, "", MDL_INTENTION_EXCLUSIVE,
                       MDL_TRANSACTION);
   mdl_request.init(mdl_type, db, name, MDL_EXCLUSIVE, MDL_TRANSACTION);
@@ -1013,6 +1013,12 @@ bool Global_read_lock::lock_global_read_lock(THD *thd)
   if (!m_state)
   {
     MDL_request mdl_request;
+
+    if (thd->current_backup_stage != BACKUP_FINISHED)
+    {
+      my_error(ER_BACKUP_LOCK_IS_ACTIVE, MYF(0));
+      DBUG_RETURN(1);
+    }
 
     DBUG_ASSERT(! thd->mdl_context.is_lock_owner(MDL_key::BACKUP, "", "",
                                                  MDL_BACKUP_FTWRL1));

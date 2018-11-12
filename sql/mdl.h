@@ -252,9 +252,23 @@ enum enum_mdl_type {
 
 
 /** Backup locks */
+
+/**
+   Block new write requests to non transactional tables
+*/
 #define MDL_BACKUP_FLUSH enum_mdl_type(0)
+/**
+   In addition to previous locks, blocks running requests to non trans tables
+   Used to wait until all DML usage of on trans tables are finished
+*/
 #define MDL_BACKUP_WAIT_FLUSH enum_mdl_type(1)
+/**
+   In addition to previous locks, blocks new DDL's from starting
+*/
 #define MDL_BACKUP_WAIT_DDL enum_mdl_type(2)
+/**
+   In addition to previous locks, blocks commits
+*/
 #define MDL_BACKUP_WAIT_COMMIT enum_mdl_type(3)
 
 /**
@@ -274,23 +288,29 @@ enum enum_mdl_type {
 #define MDL_BACKUP_SYS_DML enum_mdl_type(8)
 
 /**
-  Must be acquired by statements that intend to modify data.
+  Must be acquired by DDL statements that intend to modify data.
+  Currently it's also used for LOCK TABLES.
 */
-#define MDL_BACKUP_STMT enum_mdl_type(9)
+#define MDL_BACKUP_DDL enum_mdl_type(9)
+
+/**
+   Blocks new DDL's. Used by backup code to enable DDL logging
+*/
+#define MDL_BACKUP_BLOCK_DDL enum_mdl_type(10)
 
 /*
   Statement is modifying data, but will not block MDL_BACKUP_STAGE 1-3
-  ALTER TABLE is started with MDL_BACKUP_STMT, but changed to
+  ALTER TABLE is started with MDL_BACKUP_DDL, but changed to
   MDL_BACKUP_ALTER_COPY while alter table is running to.
 */
 
-#define MDL_BACKUP_ALTER_COPY enum_mdl_type(10)
+#define MDL_BACKUP_ALTER_COPY enum_mdl_type(11)
 
 /**
   Must be acquired during commit.
 */
-#define MDL_BACKUP_COMMIT enum_mdl_type(11)
-#define MDL_BACKUP_END enum_mdl_type(12)
+#define MDL_BACKUP_COMMIT enum_mdl_type(12)
+#define MDL_BACKUP_END enum_mdl_type(13)
 
 
 /** Duration of metadata lock. */

@@ -1950,19 +1950,6 @@ public:
 
   bool lock_global_read_lock(THD *thd);
   void unlock_global_read_lock(THD *thd);
-  /**
-    Check if this connection can acquire protection against GRL and
-    emit error if otherwise.
-  */
-  bool can_acquire_protection() const
-  {
-    if (m_state)
-    {
-      my_error(ER_CANT_UPDATE_WITH_READLOCK, MYF(0));
-      return TRUE;
-    }
-    return FALSE;
-  }
   bool make_global_read_lock_block_commit(THD *thd);
   bool is_acquired() const { return m_state != GRL_NONE; }
   void set_explicit_lock_duration(THD *thd);
@@ -2971,6 +2958,7 @@ public:
   uint	     tmp_table, global_disable_checkpoint;
   uint	     server_status,open_options;
   enum enum_thread_type system_thread;
+  enum backup_stages current_backup_stage;
   /*
     Current or next transaction isolation level.
     When a connection is established, the value is taken from
@@ -3598,6 +3586,15 @@ public:
   inline bool in_active_multi_stmt_transaction()
   {
     return server_status & SERVER_STATUS_IN_TRANS;
+  }
+  void give_protection_error();
+  inline bool has_read_only_protection()
+  {
+    if (current_backup_stage == BACKUP_FINISHED &&
+        !global_read_lock.is_acquired())
+      return FALSE;
+    give_protection_error();
+    return TRUE;
   }
   inline bool fill_derived_tables()
   {

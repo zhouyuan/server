@@ -17,12 +17,12 @@ public:
   {
     DBUG_ASSERT(thd);
     MDL_request protection_request;
-    if (thd->global_read_lock.can_acquire_protection())
+    if (thd->has_read_only_protection())
     {
       error= true;
       return;
     }
-    protection_request.init(MDL_key::BACKUP, "", "", MDL_BACKUP_STMT,
+    protection_request.init(MDL_key::BACKUP, "", "", MDL_BACKUP_DDL,
                             MDL_EXPLICIT);
     error= thd->mdl_context.acquire_lock(&protection_request, thd->variables.lock_wait_timeout);
     if (error)

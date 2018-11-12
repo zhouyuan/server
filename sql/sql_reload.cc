@@ -221,7 +221,9 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
               !thd->mdl_context.has_locks() ||
               thd->handler_tables_hash.records ||
               thd->ull_hash.records ||
-              thd->global_read_lock.is_acquired());
+              thd->global_read_lock.is_acquired() ||
+              thd->current_backup_stage != BACKUP_FINISHED
+              );
 
   /*
     Note that if REFRESH_READ_LOCK bit is set then REFRESH_TABLES is set too
@@ -243,6 +245,7 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
         my_error(ER_LOCK_OR_ACTIVE_TRANSACTION, MYF(0));
         return 1;
       }
+
       /*
 	Writing to the binlog could cause deadlocks, as we don't log
 	UNLOCK TABLES
@@ -309,7 +312,7 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
           */
           if (thd->open_tables &&
               !thd->mdl_context.is_lock_owner(MDL_key::BACKUP, "", "",
-                                              MDL_BACKUP_STMT))
+                                              MDL_BACKUP_DDL))
           {
             my_error(ER_TABLE_NOT_LOCKED_FOR_WRITE, MYF(0),
                      thd->open_tables->s->table_name.str);
