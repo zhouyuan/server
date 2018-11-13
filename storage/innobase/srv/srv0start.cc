@@ -467,7 +467,7 @@ create_log_files(
 
 	fil_space_t*	log_space = fil_space_create(
 		"innodb_redo_log", SRV_LOG_SPACE_FIRST_ID, 0, FIL_TYPE_LOG,
-		NULL/* innodb_encrypt_log works at a different level */);
+		NULL/* innodb_encrypt_log works at a different level */, true);
 
 	ut_a(fil_validate());
 	ut_a(log_space != NULL);
@@ -696,7 +696,7 @@ srv_undo_tablespace_open(
 
 		space = fil_space_create(
 			undo_name, space_id, FSP_FLAGS_PAGE_SSIZE(),
-			FIL_TYPE_TABLESPACE, NULL);
+			FIL_TYPE_TABLESPACE, NULL, size > 0);
 
 		ut_a(fil_validate());
 		ut_a(space);
@@ -2069,7 +2069,7 @@ innobase_start_or_create_for_mysql()
 			"innodb_redo_log",
 			SRV_LOG_SPACE_FIRST_ID, 0,
 			FIL_TYPE_LOG,
-			NULL /* no encryption yet */);
+			NULL /* no encryption yet */, true);
 
 		ut_a(fil_validate());
 		ut_a(log_space);

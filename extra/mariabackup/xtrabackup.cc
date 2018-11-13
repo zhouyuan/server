@@ -3097,7 +3097,7 @@ xb_load_single_table_tablespace(
 
 		space = fil_space_create(
 			name, file->space_id(), file->flags(),
-			FIL_TYPE_TABLESPACE, NULL/* TODO: crypt_data */);
+			FIL_TYPE_TABLESPACE, NULL/* TODO: crypt_data */, true);
 
 		ut_a(space != NULL);
 
@@ -4141,7 +4141,7 @@ fail:
 	log_init(srv_n_log_files);
 	fil_space_t*	space = fil_space_create(
 		"innodb_redo_log", SRV_LOG_SPACE_FIRST_ID, 0,
-		FIL_TYPE_LOG, NULL);
+		FIL_TYPE_LOG, NULL, true);
 
 	lock_sys_create(srv_lock_table_size);
 

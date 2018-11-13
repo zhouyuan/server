@@ -165,11 +165,11 @@ struct fil_space_t {
 				unflushed_spaces */
 	UT_LIST_NODE_T(fil_space_t) space_list;
 				/*!< list of all spaces */
-	/** other tablespaces needing key rotation */
-	UT_LIST_NODE_T(fil_space_t) rotation_list;
-	/** whether this tablespace needs key rotation */
-	bool		is_in_rotation_list;
+	/** List of all encrypted spaces. */
+	UT_LIST_NODE_T(fil_space_t) encrypted_spaces;
 
+	/** List of all unencrypted spaces. */
+	UT_LIST_NODE_T(fil_space_t) unencrypted_spaces;
 	/** MariaDB encryption data */
 	fil_space_crypt_t* crypt_data;
 
@@ -508,14 +508,46 @@ struct fil_system_t {
 					record has been written since
 					the latest redo log checkpoint.
 					Protected only by log_sys->mutex. */
-	UT_LIST_BASE_NODE_T(fil_space_t) rotation_list;
-					/*!< list of all file spaces needing
-					key rotation.*/
+	/** List of all encrypted spaces */
+	UT_LIST_BASE_NODE_T(fil_space_t) encrypted_spaces;
+
+	/** List of all unencrypted spaces */
+	UT_LIST_BASE_NODE_T(fil_space_t) unencrypted_spaces;
+
+	/** Number of created encrypted spaces. */
+	ulint		n_create_encrypted;
+
+	/** Number of created un-encrypted spaces. */
+	ulint		n_create_unencrypted;
 
 	ibool		space_id_reuse_warned;
 					/* !< TRUE if fil_space_create()
 					has issued a warning about
 					potential space_id reuse */
+
+	/** Increase the number of encrypted created spaces. */
+	void inc_create_encrypted() {
+		n_create_encrypted++;
+		ut_ad(n_create_encrypted > 0);
+	}
+
+	/** Decrease the number of encrypted created spaces. */
+	void dec_create_encrypted() {
+		ut_ad(n_create_encrypted > 0);
+		n_create_encrypted--;
+	}
+
+	/** Increase the number of unencrypted created spaces. */
+	void inc_create_unencrypted() {
+		n_create_unencrypted++;
+		ut_ad(n_create_unencrypted > 0);
+	}
+
+	/** Decrease the number of unencrypted created spaces. */
+	void dec_create_unencrypted() {
+		ut_ad(n_create_unencrypted > 0);
+		n_create_unencrypted--;
+	}
 };
 
 /** The tablespace memory cache. This variable is NULL before the module is
@@ -578,6 +610,7 @@ Error messages are issued to the server log.
 @param[in]	purpose		tablespace purpose
 @param[in,out]	crypt_data	encryption information
 @param[in]	mode		encryption mode
+@param[in[	is_read		whether the tablespace is already read
 @return pointer to created tablespace, to be filled in with fil_node_create()
 @retval NULL on failure (such as when the same tablespace exists) */
 fil_space_t*
@@ -587,6 +620,7 @@ fil_space_create(
 	ulint			flags,
 	fil_type_t		purpose,
 	fil_space_crypt_t*	crypt_data,
+	bool			is_read = false,
 	fil_encryption_t	mode = FIL_ENCRYPTION_DEFAULT)
 	MY_ATTRIBUTE((warn_unused_result));
 

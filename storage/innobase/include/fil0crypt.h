@@ -117,6 +117,7 @@ struct fil_space_crypt_t : st_encryption_scheme
 		fil_encryption_t new_encryption)
 		: st_encryption_scheme(),
 		min_key_version(new_min_key_version),
+		prev_key_version(0),
 		page0_offset(0),
 		encryption(new_encryption),
 		key_found(0),
@@ -180,6 +181,10 @@ struct fil_space_crypt_t : st_encryption_scheme
 		return (encryption == FIL_ENCRYPTION_OFF);
 	}
 
+	bool is_create_encrypted() const {
+		return encryption == FIL_ENCRYPTION_ON;
+	}
+
 	/** Write crypt data to a page (0)
 	@param[in]	space	tablespace
 	@param[in,out]	page0	first page of the tablespace
@@ -187,6 +192,9 @@ struct fil_space_crypt_t : st_encryption_scheme
 	void write_page0(const fil_space_t* space, byte* page0, mtr_t* mtr);
 
 	uint min_key_version; // min key version for this space
+	/* Store the previous key version. */
+	uint prev_key_version;
+
 	ulint page0_offset;   // byte offset on page 0 for crypt data
 	fil_encryption_t encryption; // Encryption setup
 
