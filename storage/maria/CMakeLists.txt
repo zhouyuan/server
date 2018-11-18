@@ -104,6 +104,6 @@ IF (MSVC)
   SET_TARGET_PROPERTIES(aria_chk aria_pack PROPERTIES LINK_FLAGS "setargv.obj")
 ENDIF()
 
-CMAKE_DEPENDENT_OPTION(USE_ARIA_FOR_TMP_TABLES "Use Aria for temporary tables" ON
+CMAKE_DEPENDENT_OPTION(USE_ARIA_FOR_TMP_TABLES "Use Aria for temporary tables" OFF
                        "WITH_ARIA_STORAGE_ENGINE" OFF)
 
