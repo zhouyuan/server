@@ -172,7 +172,7 @@ xb_mysql_query(MYSQL *connection, const char *query, bool use_result,
 		msg("Error: failed to execute query %s: %s\n", query,
 			mysql_error(connection));
 		if (die_on_error) {
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 		return(NULL);
 	}
@@ -182,7 +182,7 @@ xb_mysql_query(MYSQL *connection, const char *query, bool use_result,
 		if ((mysql_result = mysql_store_result(connection)) == NULL) {
 			msg("Error: failed to fetch query result %s: %s\n",
 				query, mysql_error(connection));
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 
 		if (!use_result) {
@@ -914,7 +914,7 @@ DECLARE_THREAD(kill_mdl_waiters_thread(void *))
 			snprintf(query, sizeof(query), "KILL QUERY %s", row[0]);
 			if (mysql_query(mysql, query) && (mysql_errno(mysql) != ER_NO_SUCH_THREAD)) {
 				msg("Error: failed to execute query %s: %s\n", query,mysql_error(mysql));
-				exit(EXIT_FAILURE);
+				_exit(EXIT_FAILURE);
 			}
 		}
 		mysql_free_result(result);
@@ -1770,7 +1770,7 @@ mdl_lock_init()
   if (!mdl_con)
   {
     msg("FATAL: cannot create connection for MDL locks");
-    exit(1);
+    _exit(1);
   }
   const char *query =
     "SELECT NAME, SPACE FROM INFORMATION_SCHEMA.INNODB_SYS_TABLES WHERE NAME LIKE '%%/%%'";
