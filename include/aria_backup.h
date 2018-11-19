@@ -19,8 +19,8 @@ typedef struct st_aria_table_capabilities
 {
   uint block_size;
   uint keypage_header;
-  ulong header_size;
-  ulong bitmap_pages_covered;
+  my_off_t header_size;
+  uint bitmap_pages_covered;
   my_bool checksum;
   my_bool transactional;
   /* This is true if the table can be copied without any locks */
