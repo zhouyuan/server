@@ -1540,6 +1540,10 @@ UNIV_INTERN
 ulint
 fil_space_get_block_size(const fil_space_t* space, unsigned offset);
 
+/** Write the global encryption status of all tablespace.
+@return true if we need to update crypt status. */
+void fil_write_crypt_status_need();
+
 #include "fil0fil.ic"
 #endif /* UNIV_INNOCHECKSUM */
 

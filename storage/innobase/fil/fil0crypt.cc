@@ -93,6 +93,10 @@ static ib_mutex_t crypt_stat_mutex;
 extern my_bool srv_background_scrub_data_uncompressed;
 extern my_bool srv_background_scrub_data_compressed;
 
+/** Variable for maintaining global encryption status for all tablespace.
+This is protected by fil_system->mutex. */
+UNIV_INTERN srv_crypt_status_t	srv_crypt_space_status;
+
 /***********************************************************************
 Check if a key needs rotation given a key_state
 @param[in]	crypt_data		Encryption information
@@ -454,6 +458,7 @@ fil_space_set_crypt_data(
 				fil_system->inc_create_encrypted();
 			}
 
+			fil_write_crypt_status_need();
 		}
 
 		mutex_exit(&fil_system->mutex);
@@ -473,6 +478,8 @@ fil_space_set_crypt_data(
 			if (crypt_data->is_create_encrypted()) {
 				fil_system->inc_create_encrypted();
 			}
+
+			fil_write_crypt_status_need();
 		}
 
 		mutex_exit(&fil_system->mutex);
@@ -954,6 +961,10 @@ fil_crypt_needs_rotation(
 	    && srv_encrypt_tables == 0 ) {
 		/* This is rotation encrypted => unencrypted */
 		return true;
+	}
+
+	if (rotate_key_age == 0) {
+		return false;
 	}
 
 	/* this is rotation encrypted => encrypted,
@@ -1464,6 +1475,18 @@ fil_crypt_return_iops(
 	fil_crypt_update_total_stat(state);
 }
 
+/** Verify whether the both global encryption status variable and
+innodb_encrypt_tables are in encryption/decryption state.
+@retval true if srv_encrypt_space_status and innodb_encrypt_tables
+		both shows encryption/decryption state. */
+bool fil_crypt_valid_state()
+{
+	return (srv_crypt_space_status == ALL_ENCRYPTED
+		&& srv_encrypt_tables)
+	       || (srv_crypt_space_status == ALL_DECRYPTED
+		   && !srv_encrypt_tables);
+}
+
 /***********************************************************************
 Search for a space needing rotation
 @param[in,out]		key_state		Key state
@@ -1496,6 +1519,21 @@ fil_crypt_find_space_to_rotate(
 			fil_space_release(state->space);
 		}
 		state->space = NULL;
+	}
+
+	if (srv_fil_crypt_rotate_key_age == 0) {
+		mutex_enter(&fil_system->mutex);
+
+		if ((srv_encrypt_tables
+		     && srv_crypt_space_status == ALL_ENCRYPTED)
+		    || (!srv_encrypt_tables
+			&& srv_crypt_space_status == ALL_DECRYPTED)) {
+			mutex_exit(&fil_system->mutex);
+			fil_crypt_return_iops(state);
+			return false;
+		}
+
+		mutex_exit(&fil_system->mutex);
 	}
 
 	/* If key rotation is enabled (default) we iterate all tablespaces.
@@ -2065,10 +2103,12 @@ fil_crypt_flush_space(
 		    && crypt_data->min_key_version == 0) {
 			UT_LIST_REMOVE(fil_system->encrypted_spaces,
 				       space);
+
 			UT_LIST_ADD_LAST(fil_system->unencrypted_spaces,
 					 space);
 		}
 
+		fil_write_crypt_status_need();
 		mutex_exit(&fil_system->mutex);
 	}
 

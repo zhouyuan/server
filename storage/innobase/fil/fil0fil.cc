@@ -674,6 +674,7 @@ retry:
 					fil_system->inc_create_unencrypted();
 				}
 
+				fil_write_crypt_status_need();
 			}
 
 			if (space->crypt_data != NULL
@@ -684,6 +685,8 @@ retry:
 				if (space->crypt_data->is_create_encrypted()) {
 					fil_system->inc_create_encrypted();
 				}
+
+				fil_write_crypt_status_need();
 			}
 		}
 
@@ -1607,8 +1610,13 @@ fil_space_create(
 				fil_system->inc_create_encrypted();
 			}
 		}
+
+		fil_write_crypt_status_need();
+
 	} else if (is_read) {
 		UT_LIST_ADD_LAST(fil_system->unencrypted_spaces, space);
+
+		fil_write_crypt_status_need();
 	}
 
 	mutex_exit(&fil_system->mutex);
@@ -6259,4 +6267,42 @@ fil_space_set_punch_hole(
 	bool			val)
 {
 	node->space->punch_hole = val;
+}
+
+/** Write the global encryption status of all tablespace.
+@return true if we need to update crypt status. */
+void fil_write_crypt_status_need()
+{
+	ut_ad(mutex_own(&fil_system->mutex));
+
+	if (!mysqld_server_started) {
+		return;
+	}
+
+	bool	is_valid = fil_crypt_valid_state();
+
+	if ((UT_LIST_GET_LEN(fil_system->space_list)
+	     == (UT_LIST_GET_LEN(fil_system->encrypted_spaces)
+		 + fil_system->n_create_unencrypted)) && srv_encrypt_tables) {
+		srv_crypt_space_status = ALL_ENCRYPTED;
+	} else if ((UT_LIST_GET_LEN(fil_system->space_list)
+		    == (UT_LIST_GET_LEN(fil_system->unencrypted_spaces)
+		        + fil_system->n_create_encrypted)) && !srv_encrypt_tables) {
+		srv_crypt_space_status = ALL_DECRYPTED;
+	} else {
+		srv_crypt_space_status = MIX_STATE;
+	}
+
+	bool	update_crypt = (is_valid && !fil_crypt_valid_state())
+				  || (!is_valid && fil_crypt_valid_state());
+
+	if (!update_crypt) {
+		return;
+	}
+
+	mutex_exit(&fil_system->mutex);
+
+	dict_hdr_set_crypt_status(srv_crypt_space_status);
+
+	mutex_enter(&fil_system->mutex);
 }
