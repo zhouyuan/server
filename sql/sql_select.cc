@@ -4646,7 +4646,8 @@ make_join_statistics(JOIN *join, List<TABLE_LIST> &tables_list,
 
   if (join->conds || outer_join)
   {
-    if (update_ref_and_keys(join->thd, keyuse_array, stat, join->table_count,
+    THD *thd=join->thd;
+    if (update_ref_and_keys(thd, keyuse_array, stat, join->table_count,
                             join->conds, ~outer_join, join->select_lex, &sargables))
       goto error;
     /*
@@ -4658,10 +4659,13 @@ make_join_statistics(JOIN *join, List<TABLE_LIST> &tables_list,
         ((Item_in_subselect*)join->unit->item)->test_strategy(SUBS_IN_TO_EXISTS));
 
     if (keyuse_array->elements &&
-        sort_and_filter_keyuse(join->thd, keyuse_array,
+        sort_and_filter_keyuse(thd, keyuse_array,
                                skip_unprefixed_keyparts))
       goto error;
     DBUG_EXECUTE("opt", print_keyuse_array(keyuse_array););
+    Opt_trace_context *ctx= &thd->opt_trace;
+    if (ctx->get_current_trace())
+      print_keyuse_array_for_trace(ctx, keyuse_array);
   }
 
   join->const_table_map= no_rows_const_tables;

@@ -17,6 +17,7 @@
 #define SQL_TEST_INCLUDED
 
 #include "mysqld.h"
+#include "opt_trace_context.h"
 
 class JOIN;
 struct TABLE_LIST;
@@ -31,6 +32,7 @@ void TEST_join(JOIN *join);
 void print_plan(JOIN* join,uint idx, double record_count, double read_time,
                 double current_read_time, const char *info);
 void print_keyuse_array(DYNAMIC_ARRAY *keyuse_array);
+void print_keyuse_array_for_trace(Opt_trace_context *trace, DYNAMIC_ARRAY *keyuse_array);
 void print_sjm(SJ_MATERIALIZATION_INFO *sjm);
 void dump_TABLE_LIST_graph(SELECT_LEX *select_lex, TABLE_LIST* tl);
 #endif
