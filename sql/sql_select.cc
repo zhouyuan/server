@@ -371,7 +371,8 @@ static void trace_table_dependencies(Opt_trace_context *trace,
                   "all 64 bits.");
     for (uint j = 0; j < 64; j++) 
     {
-      if (join_tabs[i].dependent & (1ULL << j)) depends_on.add_ll(j);
+      if (join_tabs[i].dependent & (1ULL << j))
+        depends_on.get_value_context().add_ll(j);
     }
   }
 }
@@ -1376,9 +1377,7 @@ JOIN::prepare(TABLE_LIST *tables_init,
 
   {
     Json_writer_object trace_wrapper(writer);
-    trace_wrapper.add_member("expanded_query");
     opt_trace_print_expanded_query(thd, select_lex, &trace_wrapper);
-    
   }
 
   if (!procedure && result && result->prepare(fields_list, unit_arg))

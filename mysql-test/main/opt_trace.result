@@ -1,0 +1,270 @@
+SELECT table_name, column_name FROM information_schema.columns where table_name="OPTIMIZER_TRACE";
+table_name	column_name
+OPTIMIZER_TRACE	QUERY
+OPTIMIZER_TRACE	TRACE
+OPTIMIZER_TRACE	MISSING_BYTES_BEYOND_MAX_MEM_SIZE
+OPTIMIZER_TRACE	INSUFFICIENT_PRIVILEGES
+show variables like 'optimizer_trace';
+Variable_name	Value
+optimizer_trace	enabled=off,one_line=off
+set optimizer_trace="enabled=on,one_line=on";
+show variables like 'optimizer_trace';
+Variable_name	Value
+optimizer_trace	enabled=on,one_line=on
+set optimizer_trace="enabled=off,one_line=off";
+create table t1 (a int, b int);
+insert into t1 values (1,2),(2,3);
+create table t2 (b int);
+insert into t2 values (1),(2);
+create function f1 (a int) returns INT
+return 1;
+create view v1 as select * from t1 where t1.a=1;
+create view v2 as select * from t1 where t1.a=1 group by t1.b;
+set optimizer_trace="enabled=on,one_line=off";
+# Mergeable views/derived tables
+select * from v1;
+a	b
+1	2
+select * from information_schema.OPTIMIZER_TRACE;
+QUERY	TRACE	MISSING_BYTES_BEYOND_MAX_MEM_SIZE	INSUFFICIENT_PRIVILEGES
+select * from v1	{
+  "steps": [
+    {
+      "join_preparation": {
+        "select_id": 1,
+        "steps": [
+          {
+            "join_preparation": {
+              "select_id": 2,
+              "steps": [
+                {
+                  "expanded_query": "/* select#2 */ select `t1`.`a` AS `a`,`t1`.`b` AS `b` from `t1` where `t1`.`a` = 1"
+                }
+              ]
+            }
+          },
+          {
+            "expanded_query": "/* select#1 */ select `t1`.`a` AS `a`,`t1`.`b` AS `b` from `v1`"
+          }
+        ]
+      }
+    },
+    {
+      "join_optimization": {
+        "select_id": 1,
+        "steps": [
+          {
+            "view": {
+              "table": "v1",
+              "select_id": 2,
+              "merged": true
+            }
+          },
+          {
+            "condition_processing": {
+              "condition": "WHERE",
+              "original_condition": "t1.a = 1",
+              "steps": [
+                {
+                  "transformation": "equality_propagation",
+                  "resulting_condition": "multiple equal(1, t1.a)"
+                },
+                {
+                  "transformation": "constant_propagation",
+                  "resulting_condition": "multiple equal(1, t1.a)"
+                },
+                {
+                  "transformation": "trivial_condition_removal",
+                  "resulting_condition": "multiple equal(1, t1.a)"
+                }
+              ]
+            }
+          },
+          {
+            "table_dependencies": [
+              {
+                "table": "t1",
+                "row_may_be_null": false,
+                "map_bit": 0,
+                "depends_on_map_bits": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "join_execution": {
+        "select_id": 1,
+        "steps": []
+      }
+    }
+  ]
+}	0	0
+select * from (select * from t1)q;
+a	b
+1	2
+2	3
+select * from information_schema.OPTIMIZER_TRACE;
+QUERY	TRACE	MISSING_BYTES_BEYOND_MAX_MEM_SIZE	INSUFFICIENT_PRIVILEGES
+select * from (select * from t1)q	{
+  "steps": [
+    {
+      "join_preparation": {
+        "select_id": 1,
+        "steps": [
+          {
+            "join_preparation": {
+              "select_id": 2,
+              "steps": [
+                {
+                  "expanded_query": "/* select#2 */ select `t1`.`a` AS `a`,`t1`.`b` AS `b` from `t1`"
+                }
+              ]
+            }
+          },
+          {
+            "expanded_query": "/* select#1 */ select `t1`.`a` AS `a`,`t1`.`b` AS `b` from (/* select#2 */ select `t1`.`a` AS `a`,`t1`.`b` AS `b` from `t1`) `q`"
+          }
+        ]
+      }
+    },
+    {
+      "join_optimization": {
+        "select_id": 1,
+        "steps": [
+          {
+            "derived": {
+              "table": "q",
+              "select_id": 2,
+              "merged": true
+            }
+          },
+          {
+            "table_dependencies": [
+              {
+                "table": "t1",
+                "row_may_be_null": false,
+                "map_bit": 0,
+                "depends_on_map_bits": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "join_execution": {
+        "select_id": 1,
+        "steps": []
+      }
+    }
+  ]
+}	0	0
+# Non-Mergeable views
+select * from v2;
+a	b
+1	2
+select * from information_schema.OPTIMIZER_TRACE;
+QUERY	TRACE	MISSING_BYTES_BEYOND_MAX_MEM_SIZE	INSUFFICIENT_PRIVILEGES
+select * from v2	{
+  "steps": [
+    {
+      "join_preparation": {
+        "select_id": 1,
+        "steps": [
+          {
+            "join_preparation": {
+              "select_id": 2,
+              "steps": [
+                {
+                  "expanded_query": "/* select#2 */ select `t1`.`a` AS `a`,`t1`.`b` AS `b` from `t1` where `t1`.`a` = 1 group by `t1`.`b`"
+                }
+              ]
+            }
+          },
+          {
+            "expanded_query": "/* select#1 */ select `v2`.`a` AS `a`,`v2`.`b` AS `b` from `v2`"
+          }
+        ]
+      }
+    },
+    {
+      "join_optimization": {
+        "select_id": 1,
+        "steps": [
+          {
+            "view": {
+              "table": "v2",
+              "select_id": 2,
+              "merged": false
+            }
+          },
+          {
+            "join_optimization": {
+              "select_id": 2,
+              "steps": [
+                {
+                  "condition_processing": {
+                    "condition": "WHERE",
+                    "original_condition": "t1.a = 1",
+                    "steps": [
+                      {
+                        "transformation": "equality_propagation",
+                        "resulting_condition": "multiple equal(1, t1.a)"
+                      },
+                      {
+                        "transformation": "constant_propagation",
+                        "resulting_condition": "multiple equal(1, t1.a)"
+                      },
+                      {
+                        "transformation": "trivial_condition_removal",
+                        "resulting_condition": "multiple equal(1, t1.a)"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "table_dependencies": [
+                    {
+                      "table": "t1",
+                      "row_may_be_null": false,
+                      "map_bit": 0,
+                      "depends_on_map_bits": []
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "table_dependencies": [
+              {
+                "table": "v2",
+                "row_may_be_null": false,
+                "map_bit": 0,
+                "depends_on_map_bits": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "join_execution": {
+        "select_id": 1,
+        "steps": [
+          {
+            "join_execution": {
+              "select_id": 2,
+              "steps": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}	0	0
+drop table t1,t2;
+drop view v1,v2;
+drop function f1;

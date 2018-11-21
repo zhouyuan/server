@@ -101,7 +101,7 @@ class Opt_trace_start {
    @param  trace_object  Json_writer object to which the query will be added
 */
 void opt_trace_print_expanded_query(THD *thd, SELECT_LEX *select_lex,
-                                    Json_writer_struct *trace_object);
+                                    Json_writer_object *trace_object);
 /**
    Fills information_schema.OPTIMIZER_TRACE with rows (one per trace)
    @retval 0 ok

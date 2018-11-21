@@ -100,7 +100,7 @@ inline bool sql_command_can_be_traced(enum enum_sql_command sql_command)
 }
 
 void opt_trace_print_expanded_query(THD *thd, SELECT_LEX *select_lex,
-                                    Json_writer_struct *writer)
+                                    Json_writer_object *writer)
 
 {
   Opt_trace_context *const trace = &thd->opt_trace;
@@ -117,7 +117,11 @@ void opt_trace_print_expanded_query(THD *thd, SELECT_LEX *select_lex,
                                     QT_ITEM_IDENT_SKIP_DB_NAMES |
                                     QT_VIEW_INTERNAL
                                     ));
-  writer->add_str(str);
+  /*
+    The output is not very pretty lots of back-ticks, the output
+    is as the one in explain extended , lets try to improved it here.
+  */
+  writer->add_member("expanded_query").add_str(str);
 }
 
 /**
@@ -302,27 +306,41 @@ void Json_writer::add_table_name(TABLE_LIST *tab)
 {
   if (tab != NULL) 
   {
+    THD *thd= current_thd;
     char buff[32];
     String str(buff, sizeof(buff), system_charset_info);
     str.length(0);
+    ulonglong save_option_bits= thd->variables.option_bits;
+    thd->variables.option_bits &= ~OPTION_QUOTE_SHOW_CREATE;
     tab->print(current_thd, table_map(0), &str,
               enum_query_type(QT_TO_SYSTEM_CHARSET | QT_SHOW_SELECT_NUMBER
                 | QT_ITEM_IDENT_SKIP_DB_NAMES));
-    add_str(str.ptr());
+    thd->variables.option_bits= save_option_bits;
+    add_str(str.c_ptr_safe());
   }
 }
+
+/*
+  Introduce enum_query_type flags parameter, maybe also allow
+  EXPLAIN also use this function.
+*/
 
 void Json_writer::add_str(Item *item)
 {
   if (item)
   {
+    THD *thd= current_thd;
     char buff[256];
     String str(buff, sizeof(buff), system_charset_info);
     str.length(0);
+
+    ulonglong save_option_bits= thd->variables.option_bits;
+    thd->variables.option_bits &= ~OPTION_QUOTE_SHOW_CREATE;
     item->print(&str,
                 enum_query_type(QT_TO_SYSTEM_CHARSET | QT_SHOW_SELECT_NUMBER
                                | QT_ITEM_IDENT_SKIP_DB_NAMES));
-    add_str(str.ptr());
+    thd->variables.option_bits= save_option_bits;
+    add_str(str.c_ptr_safe());
   }
 }
 

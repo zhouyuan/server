@@ -167,69 +167,73 @@ public:
 };
 
 
+class Json_value_context
+{
+  Json_writer* writer;
+  public:
+  void init(Json_writer *my_writer) { writer= my_writer; }
+  void add_str(const char* val)
+  {
+    if (writer)
+      writer->add_str(val);
+  }
+  void add_str(const String &str)
+  {
+    if (writer)
+      writer->add_str(str);
+  }
+  void add_str(Item *item)
+  {
+    if (writer)
+      writer->add_str(item);
+  }
+
+  void add_ll(longlong val)
+  {
+    if (writer)
+      writer->add_ll(val);
+  }
+  void add_size(longlong val)
+  {
+    if (writer)
+      writer->add_size(val);
+  }
+  void add_double(double val)
+  {
+    if (writer)
+      writer->add_double(val);
+  }
+  void add_bool(bool val)
+  {
+    if (writer)
+      writer->add_bool(val);
+  }
+  void add_null()
+  {
+    if (writer)
+      writer->add_null();
+  }
+  void add_table_name(TABLE_LIST *tab)
+  {
+    if (writer)
+      writer->add_table_name(tab);
+  }
+};
+
 /* A common base for Json_writer_object and Json_writer_array */
 class Json_writer_struct
 {
 protected:
   Json_writer* my_writer;
+  Json_value_context context;
+
 public:
   Json_writer_struct(Json_writer* writer)
   {
     my_writer= writer;
+    context.init(writer);
   }
-  Json_writer_struct& add_member(const char *name)
-  {
-    if (my_writer)
-      my_writer->add_member(name);
-    return *this;
-  }
-  
-  void add_str(const char* val)
-  {
-    if (my_writer)
-      my_writer->add_str(val);
-  }
-  void add_str(const String &str)
-  {
-    if (my_writer)
-      my_writer->add_str(str);
-  }
-  void add_str(Item *item)
-  {
-    if (my_writer)
-      my_writer->add_str(item);
-  }
-
-  void add_ll(longlong val)
-  {
-    if (my_writer)
-      my_writer->add_ll(val);
-  }
-  void add_size(longlong val)
-  {
-    if (my_writer)
-      my_writer->add_size(val);
-  }
-  void add_double(double val)
-  {
-    if (my_writer)
-      my_writer->add_double(val);
-  }
-  void add_bool(bool val)
-  {
-    if (my_writer)
-      my_writer->add_bool(val);
-  }
-  void add_null()
-  {
-    if (my_writer)
-      my_writer->add_null();
-  }
-  void add_table_name(TABLE_LIST *tab)
-  {
-    if (my_writer)
-      my_writer->add_table_name(tab);
-  }
+  Json_value_context& get_value_context() { return context; }
 };
 
 
@@ -242,6 +246,12 @@ class Json_writer_object:public Json_writer_struct
 public:
   Json_writer_object(Json_writer *w);
   Json_writer_object(Json_writer *w, const char *str);
+  Json_value_context& add_member(const char *name)
+  {
+    if (my_writer)
+      my_writer->add_member(name);
+    return context;
+  }
   ~Json_writer_object();
 };
 

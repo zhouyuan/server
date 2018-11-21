@@ -25,10 +25,6 @@ select * from information_schema.OPTIMIZER_TRACE;
 --echo # Non-Mergeable views
 select * from v2;
 select * from information_schema.OPTIMIZER_TRACE;
-
---echo # WHERE and HAVING clause
-
 drop table t1,t2;
 drop view v1,v2;
 drop function f1;
-
