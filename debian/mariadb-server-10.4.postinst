@@ -37,7 +37,7 @@ set_mysql_rootpw() {
        cat << EOF > $tfile
 USE mysql;
 SET sql_log_bin=0;
-UPDATE user SET password=PASSWORD("$rootpw") WHERE user='root';
+UPDATE global_priv SET priv=json_set(priv, '$.plugin', 'mysql_native_password', '$.authentication_string', PASSWORD("$rootpw")) WHERE user='root';
 FLUSH PRIVILEGES;
 EOF
        if grep -q 'PASSWORD("")' $tfile; then
@@ -193,18 +193,10 @@ EOF
 
     replace_query=`/bin/echo -e \
         "USE mysql;\n" \
-        "SET sql_mode='';\n" \
-        "REPLACE INTO user SET " \
-        "  host='localhost', user='debian-sys-maint', password=password('$pass'), " \
-        "  Select_priv='Y', Insert_priv='Y', Update_priv='Y', Delete_priv='Y', " \
-        "  Create_priv='Y', Drop_priv='Y', Reload_priv='Y', Shutdown_priv='Y', " \
-        "  Process_priv='Y',  File_priv='Y', Grant_priv='Y', References_priv='Y', " \
-        "  Index_priv='Y', Alter_priv='Y', Super_priv='Y', Show_db_priv='Y', "\
-        "  Create_tmp_table_priv='Y', Lock_tables_priv='Y', Execute_priv='Y', "\
-        "  Repl_slave_priv='Y', Repl_client_priv='Y', Create_view_priv='Y', "\
-        "  Show_view_priv='Y', Create_routine_priv='Y', Alter_routine_priv='Y', "\
-        "  Create_user_priv='Y', Event_priv='Y', Trigger_priv='Y',"\
-        "  ssl_cipher='', x509_issuer='', x509_subject='';"`;
+        "SELECT json_object('access',cast(-1 as unsigned), " \
+          "'plugin', 'mysql_native_password', " \
+          "'authentication_string', password('$pass')) INTO @all_privileges;\n"\
+        "REPLACE global_priv VALUES ('localhost', 'debian-sys-maint', @all_privileges);"`
 
     db_get mysql-server/root_password && rootpw="$RET"
     if ! set_mysql_rootpw; then
