@@ -119,6 +119,7 @@
 #include "sql_select.h"
 #include "sql_statistics.h"
 #include "uniques.h"
+#include "my_json_writer.h"
 
 #ifndef EXTRA_DEBUG
 #define test_rb_tree(A,B) {}
@@ -428,6 +429,17 @@ static int and_range_trees(RANGE_OPT_PARAM *param,
                            SEL_TREE *tree1, SEL_TREE *tree2,
                            SEL_TREE *result);
 static bool remove_nonrange_trees(RANGE_OPT_PARAM *param, SEL_TREE *tree);
+
+static void print_key_value(String *out, const KEY_PART_INFO *key_part,
+                            const uchar *key);
+
+static void append_range_all_keyparts(Json_writer_array *range_trace,
+                                      String *range_string,
+                                      String *range_so_far, const SEL_ARG *keypart,
+                                      const KEY_PART_INFO *key_parts);
+
+void append_range(String *out, const KEY_PART_INFO *key_parts,
+                  const uchar *min_key, const uchar *max_key, const uint flag);
 
 
 /*
@@ -2190,6 +2202,14 @@ public:
   static void operator delete(void *ptr,size_t size) { TRASH_FREE(ptr, size); }
   static void operator delete(void *ptr, MEM_ROOT *mem_root) { /* Never called */ }
   virtual ~TABLE_READ_PLAN() {}               /* Remove gcc warning */
+  /**
+     Add basic info for this TABLE_READ_PLAN to the optimizer trace.
+
+     @param param        Parameters for range analysis of this table
+     @param trace_object The optimizer trace object the info is appended to
+  */
+  virtual void trace_basic_info(const PARAM *param,
+                                Json_writer_object *trace_object) const = 0;
 
 };
 
@@ -2231,6 +2251,8 @@ public:
     }
     DBUG_RETURN(quick);
   }
+  void trace_basic_info(const PARAM *param,
+                        Json_writer_object *trace_object) const{}
 };
 
 
@@ -2250,6 +2272,8 @@ public:
   struct st_ror_scan_info *cpk_scan;  /* Clustered PK scan, if there is one */
   bool is_covering; /* TRUE if no row retrieval phase is necessary */
   double index_scan_costs; /* SUM(cost(index_scan)) */
+  void trace_basic_info(const PARAM *param,
+                        Json_writer_object *trace_object) const{}
 };
 
 
@@ -2268,6 +2292,8 @@ public:
                              MEM_ROOT *parent_alloc);
   TABLE_READ_PLAN **first_ror; /* array of ptrs to plans for merged scans */
   TABLE_READ_PLAN **last_ror;  /* end of the above array */
+  void trace_basic_info(const PARAM *param,
+                        Json_writer_object *trace_object) const{}
 };
 
 
@@ -2287,7 +2313,10 @@ public:
   TRP_RANGE **range_scans; /* array of ptrs to plans of intersected scans */
   TRP_RANGE **range_scans_end; /* end of the array */
   /* keys whose scans are to be filtered by cpk conditions */
-  key_map filtered_scans;  
+  key_map filtered_scans;
+  void trace_basic_info(const PARAM *param,
+                        Json_writer_object *trace_object) const{}
+
 };
 
 
@@ -2306,6 +2335,8 @@ public:
                              MEM_ROOT *parent_alloc);
   TRP_RANGE **range_scans; /* array of ptrs to plans of merged scans */
   TRP_RANGE **range_scans_end; /* end of the array */
+  void trace_basic_info(const PARAM *param,
+                        Json_writer_object *trace_object) const{}
 };
 
 
@@ -2359,7 +2390,54 @@ public:
   QUICK_SELECT_I *make_quick(PARAM *param, bool retrieve_full_rows,
                              MEM_ROOT *parent_alloc);
   void use_index_scan() { is_index_scan= TRUE; }
+  void trace_basic_info(const PARAM *param,
+                        Json_writer_object *trace_object) const;
 };
+
+
+void TRP_GROUP_MIN_MAX::trace_basic_info(const PARAM *param,
+                                Json_writer_object *trace_object) const
+{
+  trace_object->add_member("type").add_str("index_group");
+  trace_object->add_member("index").add_str(index_info->name);
+
+  if (min_max_arg_part)
+    trace_object->add_member("group_attribute")
+                .add_str(min_max_arg_part->field->field_name);
+  else
+    trace_object->add_member("group_attribute").add_null();
+
+  trace_object->add_member("min_aggregate").add_bool(have_min);
+  trace_object->add_member("max_aggregate").add_bool(have_max);
+  trace_object->add_member("distinct_aggregate").add_bool(have_agg_distinct);
+  trace_object->add_member("rows").add_ll(records);
+  trace_object->add_member("cost").add_double(read_cost);
+
+
+  const KEY_PART_INFO *key_part = index_info->key_part;
+  Opt_trace_context *const trace = &param->thd->opt_trace;
+  Json_writer *writer= trace->get_current_json();
+  {
+    Json_writer_array trace_keyparts(writer, "key_parts_used_for_access");
+    for (uint partno = 0; partno < used_key_parts; partno++)
+    {
+      const KEY_PART_INFO *cur_key_part = key_part + partno;
+      trace_keyparts.get_value_context()
+                    .add_str(cur_key_part->field->field_name);
+    }
+  }
+
+  Json_writer_array trace_range(writer, "ranges");
+
+  // can have group quick without ranges
+  if (index_tree)
+  {
+    String range_info;
+    range_info.set_charset(system_charset_info);
+    append_range_all_keyparts(&trace_range, NULL, &range_info, index_tree,
+                              key_part);
+  }
+}
 
 
 typedef struct st_index_scan_info
@@ -2537,6 +2615,19 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
 
   DBUG_PRINT("info",("Time to scan table: %g", read_time));
 
+  Opt_trace_context *const trace = &thd->opt_trace;
+  Json_writer* writer= trace->get_current_json();
+  Json_writer_object rows_estimation_tracer(writer);
+  Json_writer_array rows_estimation(writer, "rows_estimation");
+  Json_writer_object table_records(writer);
+  table_records.add_member("table").add_table_name(head->pos_in_table_list);
+  Json_writer_object trace_range(writer, "range_analysis");
+  {
+    Json_writer_object table_rec(writer, "table_scan");
+    table_rec.add_member("rows").add_ll(records);
+    table_rec.add_member("cost").add_ll(read_time);
+  }
+
   keys_to_use.intersect(head->keys_in_use_for_query);
   if (!keys_to_use.is_clear_all())
   {
@@ -2590,19 +2681,34 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
     */
     key_info= head->key_info;
     uint max_key_len= 0;
+
+    Json_writer_array trace_idx(writer, "potential_range_indexes");
+
     for (idx=0 ; idx < head->s->keys ; idx++, key_info++)
     {
+      Json_writer_object trace_idx_details(writer);
+      trace_idx_details.add_member("index").add_str(key_info->name);
       KEY_PART_INFO *key_part_info;
       uint n_key_parts= head->actual_n_key_parts(key_info);
 
       if (!keys_to_use.is_set(idx))
-	continue;
+      {
+        trace_idx_details.add_member("usable").add_bool(FALSE);
+        trace_idx_details.add_member("cause").add_str("not_applicable");
+        continue;
+      }
       if (key_info->flags & HA_FULLTEXT)
-	continue;    // ToDo: ft-keys in non-ft ranges, if possible   SerG
+      {
+        trace_idx_details.add_member("usable").add_bool(FALSE);
+        trace_idx_details.add_member("cause").add_str("fulltext");
+        continue;    // ToDo: ft-keys in non-ft ranges, if possible   SerG
+      }
 
+      trace_idx_details.add_member("usable").add_bool(true);
       param.key[param.keys]=key_parts;
       key_part_info= key_info->key_part;
       uint cur_key_len= 0;
+      Json_writer_array trace_keypart(writer, "key_parts");
       for (uint part= 0 ; part < n_key_parts ; 
            part++, key_parts++, key_part_info++)
      {
@@ -2617,11 +2723,14 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
           (key_info->flags & HA_SPATIAL) ? Field::itMBR : Field::itRAW;
         /* Only HA_PART_KEY_SEG is used */
         key_parts->flag=         (uint8) key_part_info->key_part_flag;
+        trace_keypart.get_value_context().add_str(key_parts->field->field_name);
       }
       param.real_keynr[param.keys++]=idx;
       if (cur_key_len > max_key_len)
         max_key_len= cur_key_len;
     }
+    trace_idx.end();
+
     param.key_parts_end=key_parts;
     param.alloced_sel_args= 0;
 
@@ -2643,8 +2752,19 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
                             (double) records / TIME_FOR_COMPARE;
       DBUG_PRINT("info",  ("'all'+'using index' scan will be using key %d, "
                            "read time %g", key_for_use, key_read_time));
+
+      Json_writer_object trace_cov(writer, "best_covering_index_scan");
+      bool chosen= FALSE;
       if (key_read_time < read_time)
+      {
         read_time= key_read_time;
+        chosen= TRUE;
+      }
+      trace_cov.add_member("index").add_str(head->key_info[key_for_use].name);
+      trace_cov.add_member("cost").add_double(key_read_time);
+      trace_cov.add_member("chosen").add_bool(chosen);
+      if (!chosen)
+        trace_cov.add_member("cause").add_str("cost");
     }
 
     TABLE_READ_PLAN *best_trp= NULL;
@@ -2653,12 +2773,18 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
 
     if (cond)
     {
-      if ((tree= cond->get_mm_tree(&param, &cond)))
+      {
+        Json_writer_array trace_range_summary(writer,
+                                           "setup_range_conditions");
+        tree= cond->get_mm_tree(&param, &cond);
+      }
+      if (tree)
       {
         if (tree->type == SEL_TREE::IMPOSSIBLE)
         {
           records=0L;                      /* Return -1 from this function. */
           read_time= (double) HA_POS_ERROR;
+          trace_range.add_member("impossible_range").add_bool(true);
           goto free_mem;
         }
         /*
@@ -2666,7 +2792,10 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
           can construct a group-min-max quick select
         */
         if (tree->type != SEL_TREE::KEY && tree->type != SEL_TREE::KEY_SMALLER)
+        {
+          trace_range.add_member("range_scan_possible").add_bool(false);
           tree= NULL;
+        }
       }
     }
 
@@ -2679,10 +2808,21 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
     {
       param.table->quick_condition_rows= MY_MIN(group_trp->records,
                                              head->stat_records());
+      Json_writer_object grp_summary(writer, "best_group_range_summary");
+
+      if (unlikely(trace->get_current_trace()))
+        group_trp->trace_basic_info(&param, &grp_summary);
+
       if (group_trp->read_cost < best_read_time)
       {
+        grp_summary.add_member("chosen").add_bool(true);
         best_trp= group_trp;
         best_read_time= best_trp->read_cost;
+      }
+      else
+      {
+        grp_summary.add_member("chosen").add_bool(false);
+        grp_summary.add_member("cause").add_str("cost");
       }
     }
 
@@ -2696,7 +2836,8 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
       TRP_ROR_INTERSECT *rori_trp;
       TRP_INDEX_INTERSECT *intersect_trp;
       bool can_build_covering= FALSE;
-      
+      Json_writer_object trace_range(writer, "analyzing_range_alternatives");
+
       remove_nonrange_trees(&param, tree);
 
       /* Get best 'range' plan and prepare data for making other plans */
@@ -2797,6 +2938,17 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
     possible_keys= param.possible_keys;
 
   free_mem:
+    if (unlikely(quick && best_trp))
+    {
+      Json_writer_object trace_range_summary(writer,
+                                           "chosen_range_access_summary");
+      {
+        /*
+          trace the best plan
+        */
+      }
+    }
+
     free_root(&alloc,MYF(0));			// Return memory & allocator
     thd->mem_root= param.old_root;
     thd->no_errors=0;
@@ -12557,16 +12709,30 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
 
   DBUG_ENTER("get_best_group_min_max");
 
+  Opt_trace_context* trace= &thd->opt_trace;
+  Json_writer *writer= trace->get_current_json();
+  Json_writer_object trace_group(writer, "group_index_range");
+  const char* cause= NULL;
+
   /* Perform few 'cheap' tests whether this access method is applicable. */
-  if (!join)
-    DBUG_RETURN(NULL);        /* This is not a select statement. */
-  if ((join->table_count != 1) ||  /* The query must reference one table. */
-      (join->select_lex->olap == ROLLUP_TYPE)) /* Check (B3) for ROLLUP */
+  if (!join) /* This is not a select statement. */
+    cause= "no_join";
+  else if (join->table_count != 1)  /* The query must reference one table. */
+    cause= "not_single_table";
+  else if (join->select_lex->olap == ROLLUP_TYPE) /* Check (B3) for ROLLUP */
+    cause= "rollup";
+  else if (table->s->keys == 0) /* There are no indexes to use. */
+    cause= "no_index";
+  else if (join->conds && join->conds->used_tables()
+          & OUTER_REF_TABLE_BIT) /* Cannot execute with correlated conditions. */
+    cause= "correlated_conditions";
+
+  if (cause)
+  {
+    trace_group.add_member("chosen").add_bool(false);
+    trace_group.add_member("cause").add_str(cause);
     DBUG_RETURN(NULL);
-  if (table->s->keys == 0)        /* There are no indexes to use. */
-    DBUG_RETURN(NULL);
-  if (join->conds && join->conds->used_tables() & OUTER_REF_TABLE_BIT)
-    DBUG_RETURN(NULL); /* Cannot execute with correlated conditions. */
+  }
 
   /* Check (SA1,SA4) and store the only MIN/MAX argument - the C attribute.*/
   List_iterator<Item> select_items_it(join->fields_list);
@@ -12575,7 +12741,11 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
   if ((!join->group_list) && /* Neither GROUP BY nor a DISTINCT query. */
       (!join->select_distinct) &&
       !is_agg_distinct)
+  {
+    trace_group.add_member("chosen").add_bool(false);
+    trace_group.add_member("cause").add_str("no_group_by_or_distinct");
     DBUG_RETURN(NULL);
+  }
   /* Analyze the query in more detail. */
 
   if (join->sum_funcs[0])
@@ -12594,7 +12764,11 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
                 min_max_item->sum_func() == Item_sum::AVG_DISTINCT_FUNC))
         continue;
       else
+      {
+        trace_group.add_member("chosen").add_bool(false);
+        trace_group.add_member("cause").add_str("not_applicable_aggregate_function");
         DBUG_RETURN(NULL);
+      }
 
       /* The argument of MIN/MAX. */
       Item *expr= min_max_item->get_arg(0)->real_item();
@@ -12603,26 +12777,45 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
         if (! min_max_arg_item)
           min_max_arg_item= (Item_field*) expr;
         else if (! min_max_arg_item->eq(expr, 1))
+        {
+          trace_group.add_member("chosen").add_bool(false);
+          trace_group.add_member("cause")
+                   .add_str("arguments_different_in_min_max_function");
           DBUG_RETURN(NULL);
+        }
       }
       else
+      {
+        trace_group.add_member("chosen").add_bool(false);
+        trace_group.add_member("cause")
+                   .add_str("no_field_item_in_min_max_function");
         DBUG_RETURN(NULL);
+      }
     }
   }
 
   /* Check (SA7). */
   if (is_agg_distinct && (have_max || have_min))
   {
+    trace_group.add_member("chosen").add_bool(false);
+    trace_group.add_member("cause")
+               .add_str("have_both_agg_distinct_and_min_max");
     DBUG_RETURN(NULL);
   }
 
   /* Check (SA5). */
   if (join->select_distinct)
   {
+    trace_group.add_member("distinct_query").add_bool(true);
     while ((item= select_items_it++))
     {
       if (item->real_item()->type() != Item::FIELD_ITEM)
+      {
+        trace_group.add_member("chosen").add_bool(false);
+        trace_group.add_member("cause")
+                   .add_str("distinct_field_is_expression");
         DBUG_RETURN(NULL);
+      }
     }
   }
 
@@ -12631,7 +12824,12 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
   for (tmp_group= join->group_list; tmp_group; tmp_group= tmp_group->next)
   {
     if ((*tmp_group->item)->real_item()->type() != Item::FIELD_ITEM)
+    {
+      trace_group.add_member("chosen").add_bool(false);
+      trace_group.add_member("cause")
+                 .add_str("group_field_is_expression");
       DBUG_RETURN(NULL);
+    }
     elements_in_group++;
   }
 
@@ -12653,10 +12851,16 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
   ha_rows cur_quick_prefix_records= 0;
 
   // We go through allowed indexes
+  Json_writer_array trace_indexes(writer, "potential_group_range_indexes");
+
   for (uint cur_param_idx= 0; cur_param_idx < param->keys ; ++cur_param_idx)
   {
     const uint cur_index= param->real_keynr[cur_param_idx];
     KEY *const cur_index_info= &table->key_info[cur_index];
+
+    Json_writer_object trace_idx(writer);
+    trace_idx.add_member("index").add_str(cur_index_info->name);
+
     KEY_PART_INFO *cur_part;
     KEY_PART_INFO *end_part; /* Last part for loops. */
     /* Last index part. */
@@ -12681,7 +12885,10 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
     */
     if (!table->covering_keys.is_set(cur_index) ||
         !table->keys_in_use_for_group_by.is_set(cur_index))
-      continue;
+    {
+      cause= "not_covering";
+      goto next_index;
+    }
     
     /*
       This function is called on the precondition that the index is covering.
@@ -12689,7 +12896,10 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
       these are duplicates. The GROUP BY list cannot be a prefix of the index.
     */
     if (elements_in_group > table->actual_n_key_parts(cur_index_info))
-      continue;
+    {
+      cause= "group_key_parts_greater_than_index_key_parts";
+      goto next_index;
+    }
     
     /*
       Unless extended keys can be used for cur_index:
@@ -12715,9 +12925,14 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
         */
         if (bitmap_is_set(table->read_set, cur_field->field_index) &&
             !cur_field->part_of_key_not_clustered.is_set(cur_index))
+        {
+          cause= "not_covering";
           goto next_index;                  // Field was not part of key
+        }
       }
     }
+
+    trace_idx.add_member("covering").add_bool(true);
 
     max_key_part= 0;
     used_key_parts_map.clear_all();
@@ -12749,7 +12964,10 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
           used_key_parts_map.set_bit(max_key_part);
         }
         else
+        {
+          cause= "group_attribute_not_prefix_in_index";
           goto next_index;
+        }
       }
     }
     /*
@@ -12778,7 +12996,10 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
 
         /* not doing loose index scan for derived tables */
         if (!item_field->field)
+        {
+          cause= "derived_table";
           goto next_index;
+        }
 
         /* Find the order of the key part in the index. */
         key_part_nr= get_field_keypart(cur_index_info, item_field->field);
@@ -12790,7 +13011,10 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
           continue;
         if (key_part_nr < 1 ||
             (!is_agg_distinct && key_part_nr > join->fields_list.elements))
+        {
+          cause= "select_attribute_not_prefix_in_index";
           goto next_index;
+        }
         cur_part= cur_index_info->key_part + key_part_nr - 1;
         cur_group_prefix_len+= cur_part->store_length;
         used_key_parts_map.set_bit(key_part_nr);
@@ -12815,7 +13039,10 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
     {
       key_part_nr= get_field_keypart(cur_index_info, min_max_arg_item->field);
       if (key_part_nr <= cur_group_key_parts)
+      {
+        cause = "aggregate_column_not_suffix_in_idx";
         goto next_index;
+      }
       min_max_arg_part= cur_index_info->key_part + key_part_nr - 1;
     }
 
@@ -12826,6 +13053,7 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
     if (cur_index_info->flags & HA_NOSAME && 
         cur_group_key_parts == cur_index_info->user_defined_key_parts)
     {
+      cause= "using_unique_index";
       goto next_index;
     }
 
@@ -12865,7 +13093,10 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
                                     last_part, thd, cur_key_infix, 
                                     &cur_key_infix_len,
                                     &first_non_infix_part))
+        {
+          cause = "nonconst_equality_gap_attribute";
           goto next_index;
+        }
       }
       else if (min_max_arg_part &&
                (min_max_arg_part - first_non_group_part > 0))
@@ -12874,6 +13105,7 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
           There is a gap but no range tree, thus no predicates at all for the
           non-group keyparts.
         */
+        cause = "no_nongroup_keypart_predicate";
         goto next_index;
       }
       else if (first_non_group_part && join->conds)
@@ -12897,7 +13129,10 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
         /* Check if cur_part is referenced in the WHERE clause. */
         if (join->conds->walk(&Item::find_item_in_field_list_processor, 0,
                               key_part_range))
+        {
+          cause = "keypart_reference_from_where_clause";
           goto next_index;
+        }
       }
     }
 
@@ -12912,7 +13147,10 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
       for (; cur_part != last_part; cur_part++)
       {
         if (bitmap_is_set(table->read_set, cur_part->field->field_index))
+        {
+          cause = "keypart_after_infix_in_query";
           goto next_index;
+        }
       }
     }
 
@@ -12929,6 +13167,7 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
                                   index_range_tree, &cur_range) ||
           (cur_range && cur_range->type != SEL_ARG::KEY_RANGE))
       {
+        cause = "minmax_keypart_in_disjunctive_query";
         goto next_index;
       }
     }
@@ -12951,6 +13190,19 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
                                                    cur_index_tree, TRUE,
                                                    &mrr_flags, &mrr_bufsize,
                                                    &dummy_cost);
+      if (unlikely(cur_index_tree && trace->get_current_trace()))
+      {
+        trace_idx.add_member("index_dives_for_eq_ranges").add_bool(true);
+
+        Json_writer_array trace_range(writer, "ranges");
+
+        const KEY_PART_INFO *key_part = cur_index_info->key_part;
+
+        String range_info;
+        range_info.set_charset(system_charset_info);
+        append_range_all_keyparts(&trace_range, NULL, &range_info,
+                                  cur_index_tree, key_part);
+      }
     }
     cost_group_min_max(table, cur_index_info, cur_used_key_parts,
                        cur_group_key_parts, tree, cur_index_tree,
@@ -12961,6 +13213,9 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
       Do not compare doubles directly because they may have different
       representations (64 vs. 80 bits).
     */
+    trace_idx.add_member("rows").add_ll(cur_records);
+    trace_idx.add_member("cost").add_double(cur_read_cost);
+
     if (cur_read_cost < best_read_cost - (DBL_EPSILON * cur_read_cost))
     {
       index_info= cur_index_info;
@@ -12978,8 +13233,17 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
       used_key_parts= cur_used_key_parts;
     }
 
-  next_index:;
+  next_index:
+    if (cause)
+    {
+      trace_idx.add_member("usable").add_bool(false);
+      trace_idx.add_member("cause").add_str(cause);
+      cause = NULL;
+    }
   }
+
+  trace_indexes.end();
+
   if (!index_info) /* No usable index found. */
     DBUG_RETURN(NULL);
 
@@ -12990,14 +13254,24 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
                                       (index_info->flags & HA_SPATIAL) ?
                                       Field::itMBR : Field::itRAW,
                                       &has_min_max_fld, &has_other_fld))
+  {
+    trace_group.add_member("usable").add_bool(false);
+    trace_group.add_member("cause")
+               .add_str("unsupported_predicate_on_agg_attribute");
     DBUG_RETURN(NULL);
+  }
 
   /*
     Check (SA6) if clustered key is used
   */
   if (is_agg_distinct && index == table->s->primary_key &&
       table->file->primary_key_is_clustered())
+  {
+    trace_group.add_member("usable").add_bool(false);
+    trace_group.add_member("cause")
+               .add_str("index_is_clustered");
     DBUG_RETURN(NULL);
+  }
 
   /* The query passes all tests, so construct a new TRP object. */
   read_plan= new (param->mem_root)
@@ -13018,6 +13292,7 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
     read_plan->records=   best_records;
     if (read_time < best_read_cost && is_agg_distinct)
     {
+      trace_group.add_member("index_scan").add_bool(true);
       read_plan->read_cost= 0;
       read_plan->use_index_scan();
     }
@@ -14975,6 +15250,177 @@ static void print_quick(QUICK_SELECT_I *quick, const key_map *needed_reg)
   DBUG_VOID_RETURN;
 }
 
+/**
+  Print a key to a string
+
+  @param[out] out          String the key is appended to
+  @param[in]  key_part     Index components description
+  @param[in]  key          Key tuple
+*/
+static void print_key_value(String *out, const KEY_PART_INFO *key_part,
+                            const uchar *key)
+{
+  Field *field = key_part->field;
+
+  if (field->flags & BLOB_FLAG) {
+    // Byte 0 of a nullable key is the null-byte. If set, key is NULL.
+    if (field->real_maybe_null() && *key)
+      out->append(STRING_WITH_LEN("NULL"));
+    else
+      (field->type() == MYSQL_TYPE_GEOMETRY)
+          ? out->append(STRING_WITH_LEN("unprintable_geometry_value"))
+          : out->append(STRING_WITH_LEN("unprintable_blob_value"));
+    return;
+  }
+
+  uint store_length = key_part->store_length;
+
+  if (field->real_maybe_null()) {
+    /*
+      Byte 0 of key is the null-byte. If set, key is NULL.
+      Otherwise, print the key value starting immediately after the
+      null-byte
+    */
+    if (*key) {
+      out->append(STRING_WITH_LEN("NULL"));
+      return;
+    }
+    key++;  // Skip null byte
+    store_length--;
+  }
+
+  /*
+    Binary data cannot be converted to UTF8 which is what the
+    optimizer trace expects. If the column is binary, the hex
+    representation is printed to the trace instead.
+  */
+  if (field->flags & BINARY_FLAG) {
+    out->append("0x");
+    for (uint i = 0; i < store_length; i++) {
+      out->append(_dig_vec_lower[*(key + i) >> 4]);
+      out->append(_dig_vec_lower[*(key + i) & 0x0F]);
+    }
+    return;
+  }
+
+  char buff[128];
+  String tmp(buff, sizeof(buff), system_charset_info);
+  tmp.length(0);
+
+  TABLE *table = field->table;
+  my_bitmap_map *old_sets[2];
+
+  dbug_tmp_use_all_columns(table, old_sets, table->read_set, table->write_set);
+
+  field->set_key_image(key, key_part->length);
+  if (field->type() == MYSQL_TYPE_BIT)
+    (void)field->val_int_as_str(&tmp, 1);  // may change tmp's charset
+  else
+    field->val_str(&tmp);  // may change tmp's charset
+  out->append(tmp.ptr(), tmp.length(), tmp.charset());
+
+  dbug_tmp_restore_column_maps(table->read_set, table->write_set, old_sets);
+}
+
+void append_range(String *out, const KEY_PART_INFO *key_part,
+                  const uchar *min_key, const uchar *max_key, const uint flag) {
+  if (out->length() > 0) out->append(STRING_WITH_LEN(" AND "));
+
+  if (flag & GEOM_FLAG) {
+    /*
+      The flags of GEOM ranges do not work the same way as for other
+      range types, so printing "col < some_geom" doesn't make sense.
+      Just print the column name, not operator.
+    */
+    out->append(key_part->field->field_name);
+    out->append(STRING_WITH_LEN(" "));
+    print_key_value(out, key_part, min_key);
+    return;
+  }
+
+  if (!(flag & NO_MIN_RANGE)) {
+    print_key_value(out, key_part, min_key);
+    if (flag & NEAR_MIN)
+      out->append(STRING_WITH_LEN(" < "));
+    else
+      out->append(STRING_WITH_LEN(" <= "));
+  }
+
+  out->append(key_part->field->field_name);
+
+  if (!(flag & NO_MAX_RANGE)) {
+    if (flag & NEAR_MAX)
+      out->append(STRING_WITH_LEN(" < "));
+    else
+      out->append(STRING_WITH_LEN(" <= "));
+    print_key_value(out, key_part, max_key);
+  }
+}
+
+/*
+
+  Add ranges to the trace
+  For ex:
+    query: select * from t1 where a=2 ;
+    and we have an index on a , so we create a range
+      2 <= a <= 2
+    this is added to the trace
+*/
+
+static void append_range_all_keyparts(Json_writer_array *range_trace,
+                                      String *range_string,
+                                      String *range_so_far, const SEL_ARG *keypart,
+                                      const KEY_PART_INFO *key_parts)
+{
+
+  DBUG_ASSERT(keypart);
+  DBUG_ASSERT(keypart && keypart != &null_element);
+
+  // Navigate to first interval in red-black tree
+  const KEY_PART_INFO *cur_key_part = key_parts + keypart->part;
+  const SEL_ARG *keypart_range = keypart->first();
+  const size_t save_range_so_far_length = range_so_far->length();
+
+
+  while (keypart_range)
+  {
+    // Append the current range predicate to the range String
+    switch (keypart->type)
+    {
+      case SEL_ARG::Type::KEY_RANGE:
+        append_range(range_so_far, cur_key_part, keypart_range->min_value,
+                     keypart_range->max_value,
+                     keypart_range->min_flag | keypart_range->max_flag);
+        break;
+      case SEL_ARG::Type::MAYBE_KEY:
+        range_so_far->append("MAYBE_KEY");
+        break;
+      case SEL_ARG::Type::IMPOSSIBLE:
+        range_so_far->append("IMPOSSIBLE");
+        break;
+      default:
+        DBUG_ASSERT(false);
+        break;
+    }
+
+    if (keypart_range->next_key_part &&
+        keypart_range->next_key_part->part ==
+              keypart_range->part + 1 &&
+        keypart_range->is_singlepoint())
+    {
+      append_range_all_keyparts(range_trace, range_string, range_so_far,
+                                keypart_range->next_key_part, key_parts);
+    }
+    else
+    {
+      range_trace->get_value_context()
+                  .add_str(range_so_far->c_ptr(), range_so_far->length());
+    }
+    keypart_range= keypart_range->next;
+    range_so_far->length(save_range_so_far_length);
+  }
+  return;
+}
 
 void QUICK_RANGE_SELECT::dbug_dump(int indent, bool verbose)
 {

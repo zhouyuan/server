@@ -92,7 +92,16 @@ select * from v1	{
           },
           {
             "ref_optimizer_key_uses": []
-          }
+          },
+          "rows_estimation": [
+            {
+              "table": "t1",
+              "table_scan": {
+                "rows": 2,
+                "cost": 2
+              }
+            }
+          ]
         ]
       }
     },
@@ -152,7 +161,16 @@ select * from (select * from t1)q	{
                 "depends_on_map_bits": []
               }
             ]
-          }
+          },
+          "rows_estimation": [
+            {
+              "table": "t1",
+              "table_scan": {
+                "rows": 2,
+                "cost": 2
+              }
+            }
+          ]
         ]
       }
     },
@@ -239,7 +257,16 @@ select * from v2	{
                 },
                 {
                   "ref_optimizer_key_uses": []
-                }
+                },
+                "rows_estimation": [
+                  {
+                    "table": "t1",
+                    "table_scan": {
+                      "rows": 2,
+                      "cost": 2
+                    }
+                  }
+                ]
               ]
             }
           },
@@ -252,7 +279,16 @@ select * from v2	{
                 "depends_on_map_bits": []
               }
             ]
-          }
+          },
+          "rows_estimation": [
+            {
+              "table": "v2",
+              "table_scan": {
+                "rows": 2,
+                "cost": 2
+              }
+            }
+          ]
         ]
       }
     },
@@ -356,7 +392,23 @@ explain select * from t1,t2 where t1.a=t2.b+2 and t2.a= t1.b	{
                 "null_rejecting": true
               }
             ]
-          }
+          },
+          "rows_estimation": [
+            {
+              "table": "t1",
+              "table_scan": {
+                "rows": 100,
+                "cost": 2
+              }
+            },
+            {
+              "table": "t2",
+              "table_scan": {
+                "rows": 100,
+                "cost": 2
+              }
+            }
+          ]
         ]
       }
     },
@@ -369,3 +421,240 @@ explain select * from t1,t2 where t1.a=t2.b+2 and t2.a= t1.b	{
   ]
 }	0	0
 drop table t1,t2,t0;
+#
+# group_by min max optimization
+#
+CREATE TABLE t1 (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, a INT NOT NULL, KEY(a));
+OPTIMIZE TABLE t1;
+Table	Op	Msg_type	Msg_text
+test.t1	optimize	status	OK
+EXPLAIN SELECT DISTINCT a FROM t1;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	NULL	a	4	NULL	5	Using index for group-by
+select * from information_schema.OPTIMIZER_TRACE;
+QUERY	TRACE	MISSING_BYTES_BEYOND_MAX_MEM_SIZE	INSUFFICIENT_PRIVILEGES
+EXPLAIN SELECT DISTINCT a FROM t1	{
+  "steps": [
+    {
+      "join_preparation": {
+        "select_id": 1,
+        "steps": [
+          {
+            "expanded_query": "select distinct `t1`.`a` AS `a` from `t1`"
+          }
+        ]
+      }
+    },
+    {
+      "join_optimization": {
+        "select_id": 1,
+        "steps": [
+          {
+            "table_dependencies": [
+              {
+                "table": "t1",
+                "row_may_be_null": false,
+                "map_bit": 0,
+                "depends_on_map_bits": []
+              }
+            ]
+          },
+          "rows_estimation": [
+            {
+              "rows_estimation": [
+                {
+                  "table": "t1",
+                  "range_analysis": {
+                    "table_scan": {
+                      "rows": 65536,
+                      "cost": 13255
+                    },
+                    "potential_range_indexes": [
+                      {
+                        "index": "PRIMARY",
+                        "usable": false,
+                        "cause": "not_applicable"
+                      },
+                      {
+                        "index": "a",
+                        "usable": true,
+                        "key_parts": ["a"]
+                      }
+                    ],
+                    "best_covering_index_scan": {
+                      "index": "a",
+                      "cost": 14627,
+                      "chosen": false,
+                      "cause": "cost"
+                    },
+                    "group_index_range": {
+                      "distinct_query": true,
+                      "potential_group_range_indexes": [
+                        {
+                          "index": "a",
+                          "covering": true,
+                          "rows": 5,
+                          "cost": 7.5
+                        }
+                      ]
+                    },
+                    "best_group_range_summary": {
+                      "type": "index_group",
+                      "index": "a",
+                      "group_attribute": null,
+                      "min_aggregate": false,
+                      "max_aggregate": false,
+                      "distinct_aggregate": false,
+                      "rows": 5,
+                      "cost": 7.5,
+                      "key_parts_used_for_access": ["a"],
+                      "ranges": [],
+                      "chosen": true
+                    },
+                    "chosen_range_access_summary": {}
+                  }
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "join_execution": {
+        "select_id": 1,
+        "steps": []
+      }
+    }
+  ]
+}	0	0
+drop table t1;
+# 
+# With group by , where clause and MIN/MAX function
+# 
+CREATE TABLE t1 (a INT, b INT, c int, d int,  KEY(a,b,c,d));
+INSERT INTO t1 VALUES (1,1,1,1), (2,2,2,2), (3,3,3,3), (4,4,4,4), (1,0,1,1), (3,2,3,3), (4,5,4,4);
+ANALYZE TABLE t1;
+Table	Op	Msg_type	Msg_text
+test.t1	analyze	status	OK
+EXPLAIN SELECT MIN(d) FROM t1 where b=2 and c=3  group by a;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	NULL	a	20	NULL	4	Using where; Using index for group-by
+select * from information_schema.OPTIMIZER_TRACE;
+QUERY	TRACE	MISSING_BYTES_BEYOND_MAX_MEM_SIZE	INSUFFICIENT_PRIVILEGES
+EXPLAIN SELECT MIN(d) FROM t1 where b=2 and c=3  group by a	{
+  "steps": [
+    {
+      "join_preparation": {
+        "select_id": 1,
+        "steps": [
+          {
+            "expanded_query": "select min(`t1`.`d`) AS `MIN(d)` from `t1` where `t1`.`b` = 2 and `t1`.`c` = 3 group by `t1`.`a`"
+          }
+        ]
+      }
+    },
+    {
+      "join_optimization": {
+        "select_id": 1,
+        "steps": [
+          {
+            "condition_processing": {
+              "condition": "WHERE",
+              "original_condition": "t1.b = 2 and t1.c = 3",
+              "steps": [
+                {
+                  "transformation": "equality_propagation",
+                  "resulting_condition": "multiple equal(2, t1.b) and multiple equal(3, t1.c)"
+                },
+                {
+                  "transformation": "constant_propagation",
+                  "resulting_condition": "multiple equal(2, t1.b) and multiple equal(3, t1.c)"
+                },
+                {
+                  "transformation": "trivial_condition_removal",
+                  "resulting_condition": "multiple equal(2, t1.b) and multiple equal(3, t1.c)"
+                }
+              ]
+            }
+          },
+          {
+            "table_dependencies": [
+              {
+                "table": "t1",
+                "row_may_be_null": false,
+                "map_bit": 0,
+                "depends_on_map_bits": []
+              }
+            ]
+          },
+          {
+            "ref_optimizer_key_uses": []
+          },
+          "rows_estimation": [
+            {
+              "rows_estimation": [
+                {
+                  "table": "t1",
+                  "range_analysis": {
+                    "table_scan": {
+                      "rows": 7,
+                      "cost": 5
+                    },
+                    "potential_range_indexes": [
+                      {
+                        "index": "a",
+                        "usable": true,
+                        "key_parts": ["a", "b", "c", "d"]
+                      }
+                    ],
+                    "best_covering_index_scan": {
+                      "index": "a",
+                      "cost": 2.7006,
+                      "chosen": true
+                    },
+                    "setup_range_conditions": [],
+                    "group_index_range": {
+                      "potential_group_range_indexes": [
+                        {
+                          "index": "a",
+                          "covering": true,
+                          "index_dives_for_eq_ranges": true,
+                          "ranges": ["2 <= b <= 2 AND 3 <= c <= 3"],
+                          "rows": 4,
+                          "cost": 2.2
+                        }
+                      ]
+                    },
+                    "best_group_range_summary": {
+                      "type": "index_group",
+                      "index": "a",
+                      "group_attribute": "d",
+                      "min_aggregate": true,
+                      "max_aggregate": false,
+                      "distinct_aggregate": false,
+                      "rows": 4,
+                      "cost": 2.2,
+                      "key_parts_used_for_access": ["a", "b", "c"],
+                      "ranges": ["2 <= b <= 2 AND 3 <= c <= 3"],
+                      "chosen": true
+                    },
+                    "analyzing_range_alternatives": {},
+                    "chosen_range_access_summary": {}
+                  }
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "join_execution": {
+        "select_id": 1,
+        "steps": []
+      }
+    }
+  ]
+}	0	0
+DROP TABLE t1;
