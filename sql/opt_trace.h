@@ -16,6 +16,7 @@
 #include "opt_trace_context.h"  // Opt_trace_context
 #include "sql_lex.h"
 #include "my_json_writer.h"
+#include "sql_select.h"
 class Item;
 class THD;
 struct TABLE_LIST;
@@ -102,6 +103,8 @@ class Opt_trace_start {
 */
 void opt_trace_print_expanded_query(THD *thd, SELECT_LEX *select_lex,
                                     Json_writer_object *trace_object);
+
+void add_table_scan_values_to_trace(Opt_trace_context* trace, JOIN_TAB *tab);
 /**
    Fills information_schema.OPTIMIZER_TRACE with rows (one per trace)
    @retval 0 ok

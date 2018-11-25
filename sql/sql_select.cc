@@ -4445,6 +4445,7 @@ make_join_statistics(JOIN *join, List<TABLE_LIST> &tables_list,
   List_iterator<TABLE_LIST> ti(tables_list);
   TABLE_LIST *tables;
   Opt_trace_context* trace= &join->thd->opt_trace;
+  Json_writer *writer= trace->get_current_json();
   DBUG_ENTER("make_join_statistics");
 
   table_count=join->table_count;
@@ -4663,9 +4664,8 @@ make_join_statistics(JOIN *join, List<TABLE_LIST> &tables_list,
                                skip_unprefixed_keyparts))
       goto error;
     DBUG_EXECUTE("opt", print_keyuse_array(keyuse_array););
-    Opt_trace_context *ctx= &thd->opt_trace;
-    if (ctx->get_current_trace())
-      print_keyuse_array_for_trace(ctx, keyuse_array);
+    if (trace->get_current_trace())
+      print_keyuse_array_for_trace(trace, keyuse_array);
   }
 
   join->const_table_map= no_rows_const_tables;
@@ -4950,131 +4950,151 @@ make_join_statistics(JOIN *join, List<TABLE_LIST> &tables_list,
 
   /* Calc how many (possible) matched records in each table */
 
-  for (s=stat ; s < stat_end ; s++)
+  /*
+    Todo: add a function so that we can add these Json_writer_objects
+    easily.
+    Another way would be to enclose them in a scope {};
+  */
   {
-    s->startup_cost= 0;
-    if (s->type == JT_SYSTEM || s->type == JT_CONST)
+    Json_writer_array rows_estimation(writer, "rows_estimation");
+    for (s=stat ; s < stat_end ; s++)
     {
-      /* Only one matching row */
-      s->found_records= s->records= 1;
-      s->read_time=1.0; 
-      s->worst_seeks=1.0;
-      continue;
-    }
-    /* Approximate found rows and time to read them */
-    if (s->table->is_filled_at_execution())
-    {
-      get_delayed_table_estimates(s->table, &s->records, &s->read_time,
-                                  &s->startup_cost);
-      s->found_records= s->records;
-      table->quick_condition_rows=s->records;
-    }
-    else
-    {
-       s->scan_time();
-    }
-
-    if (s->table->is_splittable())
-      s->add_keyuses_for_splitting();
-
-    /*
-      Set a max range of how many seeks we can expect when using keys
-      This is can't be to high as otherwise we are likely to use
-      table scan.
-    */
-    s->worst_seeks= MY_MIN((double) s->found_records / 10,
-			(double) s->read_time*3);
-    if (s->worst_seeks < 2.0)			// Fix for small tables
-      s->worst_seeks=2.0;
-
-    /*
-      Add to stat->const_keys those indexes for which all group fields or
-      all select distinct fields participate in one index.
-    */
-    add_group_and_distinct_keys(join, s);
-
-    s->table->cond_selectivity= 1.0;
-    
-    /*
-      Perform range analysis if there are keys it could use (1). 
-      Don't do range analysis if we're on the inner side of an outer join (2).
-      Do range analysis if we're on the inner side of a semi-join (3).
-      Don't do range analysis for materialized subqueries (4).
-      Don't do range analysis for materialized derived tables (5)
-    */
-    if ((!s->const_keys.is_clear_all() ||
-	 !bitmap_is_clear_all(&s->table->cond_set)) &&              // (1)
-        (!s->table->pos_in_table_list->embedding ||                 // (2)
-         (s->table->pos_in_table_list->embedding &&                 // (3)
-          s->table->pos_in_table_list->embedding->sj_on_expr)) &&   // (3)
-        !s->table->is_filled_at_execution() &&                      // (4)
-        !(s->table->pos_in_table_list->derived &&                   // (5)
-          s->table->pos_in_table_list->is_materialized_derived()))  // (5)
-    {
-      bool impossible_range= FALSE;
-      ha_rows records= HA_POS_ERROR;
-      SQL_SELECT *select= 0;
-      if (!s->const_keys.is_clear_all())
+      s->startup_cost= 0;
+      if (s->type == JT_SYSTEM || s->type == JT_CONST)
       {
-        select= make_select(s->table, found_const_table_map,
-			    found_const_table_map,
-			    *s->on_expr_ref ? *s->on_expr_ref : join->conds,
-                            (SORT_INFO*) 0,
-			    1, &error);
-        if (!select)
-          goto error;
-        records= get_quick_record_count(join->thd, select, s->table,
-				        &s->const_keys, join->row_limit);
-        /* Range analyzer could modify the condition. */
-        if (*s->on_expr_ref)
-          *s->on_expr_ref= select->cond;
-        else
-          join->conds= select->cond;
 
-        s->quick=select->quick;
-        s->needed_reg=select->needed_reg;
-        select->quick=0;
-        impossible_range= records == 0 && s->table->reginfo.impossible_range;
+        Json_writer_object table_records(writer);
+        /* Only one matching row */
+        s->found_records= s->records= 1;
+        s->read_time=1.0;
+        s->worst_seeks=1.0;
+        table_records.add_member("rows").add_ll(1);
+        table_records.add_member("cost").add_ll(1);
+        table_records.add_member("table_type").add_str(s->type == JT_CONST ?
+                                                       "const" :
+                                                       "system");
+        continue;
       }
-      if (!impossible_range)
+      /* Approximate found rows and time to read them */
+      if (s->table->is_filled_at_execution())
       {
-        if (join->thd->variables.optimizer_use_condition_selectivity > 1)
-          calculate_cond_selectivity_for_table(join->thd, s->table, 
-                                               *s->on_expr_ref ?
-                                               s->on_expr_ref : &join->conds);
-        if (s->table->reginfo.impossible_range)
-	{
-          impossible_range= TRUE;
-          records= 0;
+        get_delayed_table_estimates(s->table, &s->records, &s->read_time,
+                                    &s->startup_cost);
+        s->found_records= s->records;
+        table->quick_condition_rows=s->records;
+      }
+      else
+      {
+         s->scan_time();
+      }
+
+      if (s->table->is_splittable())
+        s->add_keyuses_for_splitting();
+
+      /*
+        Set a max range of how many seeks we can expect when using keys
+        This is can't be to high as otherwise we are likely to use
+        table scan.
+      */
+      s->worst_seeks= MY_MIN((double) s->found_records / 10,
+        (double) s->read_time*3);
+      if (s->worst_seeks < 2.0)			// Fix for small tables
+        s->worst_seeks=2.0;
+
+      /*
+        Add to stat->const_keys those indexes for which all group fields or
+        all select distinct fields participate in one index.
+      */
+      add_group_and_distinct_keys(join, s);
+
+      s->table->cond_selectivity= 1.0;
+
+      /*
+        Perform range analysis if there are keys it could use (1).
+        Don't do range analysis if we're on the inner side of an outer join (2).
+        Do range analysis if we're on the inner side of a semi-join (3).
+        Don't do range analysis for materialized subqueries (4).
+        Don't do range analysis for materialized derived tables (5)
+      */
+      if ((!s->const_keys.is_clear_all() ||
+          !bitmap_is_clear_all(&s->table->cond_set)) &&              // (1)
+          (!s->table->pos_in_table_list->embedding ||                 // (2)
+           (s->table->pos_in_table_list->embedding &&                 // (3)
+            s->table->pos_in_table_list->embedding->sj_on_expr)) &&   // (3)
+          !s->table->is_filled_at_execution() &&                      // (4)
+          !(s->table->pos_in_table_list->derived &&                   // (5)
+            s->table->pos_in_table_list->is_materialized_derived()))  // (5)
+      {
+        bool impossible_range= FALSE;
+        ha_rows records= HA_POS_ERROR;
+        SQL_SELECT *select= 0;
+        if (!s->const_keys.is_clear_all())
+        {
+          select= make_select(s->table, found_const_table_map,
+              found_const_table_map,
+            *s->on_expr_ref ? *s->on_expr_ref : join->conds,
+                              (SORT_INFO*) 0,
+            1, &error);
+          if (!select)
+            goto error;
+          records= get_quick_record_count(join->thd, select, s->table,
+                  &s->const_keys, join->row_limit);
+          /* Range analyzer could modify the condition. */
+          if (*s->on_expr_ref)
+            *s->on_expr_ref= select->cond;
+          else
+            join->conds= select->cond;
+
+          s->quick=select->quick;
+          s->needed_reg=select->needed_reg;
+          select->quick=0;
+          impossible_range= records == 0 && s->table->reginfo.impossible_range;
         }
+        else
+          add_table_scan_values_to_trace(trace, s);
+
+        if (!impossible_range)
+        {
+          if (join->thd->variables.optimizer_use_condition_selectivity > 1)
+            calculate_cond_selectivity_for_table(join->thd, s->table,
+                                                 *s->on_expr_ref ?
+                                                 s->on_expr_ref : &join->conds);
+          if (s->table->reginfo.impossible_range)
+          {
+            impossible_range= TRUE;
+            records= 0;
+          }
+        }
+        if (impossible_range)
+        {
+          /*
+            Impossible WHERE or ON expression
+            In case of ON, we mark that the we match one empty NULL row.
+            In case of WHERE, don't set found_const_table_map to get the
+            caller to abort with a zero row result.
+          */
+          join->const_table_map|= s->table->map;
+          set_position(join,const_count++,s,(KEYUSE*) 0);
+          s->type= JT_CONST;
+          s->table->const_table= 1;
+          if (*s->on_expr_ref)
+          {
+            /* Generate empty row */
+            s->info= ET_IMPOSSIBLE_ON_CONDITION;
+            found_const_table_map|= s->table->map;
+            mark_as_null_row(s->table);		// All fields are NULL
+          }
+        }
+        if (records != HA_POS_ERROR)
+        {
+          s->found_records=records;
+          s->read_time= s->quick ? s->quick->read_time : 0.0;
+        }
+        if (select)
+          delete select;
       }
-      if (impossible_range)
-      {
-	/*
-	  Impossible WHERE or ON expression
-	  In case of ON, we mark that the we match one empty NULL row.
-	  In case of WHERE, don't set found_const_table_map to get the
-	  caller to abort with a zero row result.
-	*/
-	join->const_table_map|= s->table->map;
-	set_position(join,const_count++,s,(KEYUSE*) 0);
-	s->type= JT_CONST;
-        s->table->const_table= 1;
-	if (*s->on_expr_ref)
-	{
-	  /* Generate empty row */
-	  s->info= ET_IMPOSSIBLE_ON_CONDITION;
-	  found_const_table_map|= s->table->map;
-	  mark_as_null_row(s->table);		// All fields are NULL
-	}
-      }
-      if (records != HA_POS_ERROR)
-      {
-	s->found_records=records;
-	s->read_time= s->quick ? s->quick->read_time : 0.0;
-      }
-      if (select)
-        delete select;
+      else
+        add_table_scan_values_to_trace(trace, s);
     }
 
   }

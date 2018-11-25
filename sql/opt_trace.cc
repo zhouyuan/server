@@ -320,6 +320,15 @@ void Json_writer::add_table_name(TABLE_LIST *tab)
   }
 }
 
+void add_table_scan_values_to_trace(Opt_trace_context* trace, JOIN_TAB *tab)
+{
+  Json_writer *writer= trace->get_current_json();
+  Json_writer_object table_records(writer);
+  table_records.add_member("table").add_table_name(tab->tab_list);
+  Json_writer_object table_rec(writer, "table_scan");
+  table_rec.add_member("rows").add_ll(tab->found_records);
+  table_rec.add_member("cost").add_ll(tab->read_time);
+}
 /*
   Introduce enum_query_type flags parameter, maybe also allow
   EXPLAIN also use this function.
