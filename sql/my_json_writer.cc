@@ -62,6 +62,7 @@ void Json_writer::end_object()
   indent_level-=INDENT_SIZE;
   if (!first_child)
     append_indent();
+  first_child= false;
   output.append("}");
 }
 
@@ -128,7 +129,6 @@ void Json_writer::add_ll(longlong val)
   my_snprintf(buf, sizeof(buf), "%lld", val);
   add_unquoted_str(buf);
 }
-
 
 /* Add a memory size, printing in Kb, Kb, Gb if necessary */
 void Json_writer::add_size(longlong val)
@@ -198,6 +198,20 @@ void Json_writer::add_str(const char *str)
   element_started= false;
 }
 
+void Json_writer::add_str(const char *str, size_t length)
+{
+  if (fmt_helper.on_add_str(str))
+    return;
+
+  if (!element_started)
+    start_element();
+
+  output.append('"');
+  output.append(str, length);
+  output.append('"');
+  element_started= false;
+}
+
 
 void Json_writer::add_str(const String &str)
 {
@@ -220,8 +234,9 @@ Json_writer_object::Json_writer_object(Json_writer *writer, const char *str)
 }
 Json_writer_object::~Json_writer_object()
 {
-  if (my_writer)
+  if (!closed && my_writer)
     my_writer->end_object();
+  closed= TRUE;
 }
 
 
@@ -240,8 +255,9 @@ Json_writer_array::Json_writer_array(Json_writer *writer, const char *str)
 }
 Json_writer_array::~Json_writer_array()
 {
-  if (my_writer)
+  if (!closed && my_writer)
     my_writer->end_array();
+  closed= TRUE;
 }
 
 

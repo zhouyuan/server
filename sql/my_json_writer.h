@@ -109,6 +109,7 @@ public:
   
   /* Add atomic values */
   void add_str(const char* val);
+  void add_str(const char* val, size_t length);
   void add_str(const String &str);
   void add_str(Item *item);
 
@@ -177,10 +178,20 @@ class Json_value_context
     if (writer)
       writer->add_str(val);
   }
+  void add_str(const char* val, size_t length)
+  {
+    if (writer)
+      writer->add_str(val, length);
+  }
   void add_str(const String &str)
   {
     if (writer)
       writer->add_str(str);
+  }
+  void add_str(LEX_CSTRING str)
+  {
+    if (writer)
+      writer->add_str(str.str);
   }
   void add_str(Item *item)
   {
@@ -226,12 +237,14 @@ class Json_writer_struct
 protected:
   Json_writer* my_writer;
   Json_value_context context;
+  bool closed;
 
 public:
   Json_writer_struct(Json_writer* writer)
   {
     my_writer= writer;
     context.init(writer);
+    closed= false;
   }
   Json_value_context& get_value_context() { return context; }
 };
@@ -252,6 +265,12 @@ public:
       my_writer->add_member(name);
     return context;
   }
+  void end()
+  {
+    if (my_writer)
+      my_writer->end_object();
+    closed= TRUE;
+  }
   ~Json_writer_object();
 };
 
@@ -264,6 +283,12 @@ class Json_writer_array:public Json_writer_struct
 public:
   Json_writer_array(Json_writer *w);
   Json_writer_array(Json_writer *w, const char *str);
+  void end()
+  {
+    if (my_writer)
+      my_writer->end_array();
+    closed= TRUE;
+  }
   ~Json_writer_array();
 };
 
