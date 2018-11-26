@@ -610,7 +610,11 @@ static DYNAMIC_ARRAY acl_wild_hosts;
 static Hash_filo<acl_entry> *acl_cache;
 static uint grant_version=0; /* Version of priv tables. incremented by acl_load */
 static ulong get_access(TABLE *form,uint fieldnr, uint *next_field=0);
-static int acl_compare(ACL_ACCESS *a,ACL_ACCESS *b);
+static int acl_compare(const ACL_ACCESS *a, const ACL_ACCESS *b);
+static int acl_user_compare(const ACL_USER *a, const ACL_USER *b);
+static void rebuild_acl_users();
+static int acl_db_compare(const ACL_DB *a, const ACL_DB *b);
+static void rebuild_acl_dbs();
 static ulong get_sort(uint count,...);
 static void init_check_host(void);
 static void rebuild_check_host(void);
@@ -1973,8 +1977,7 @@ static bool acl_load(THD *thd, const Grant_tables& tables)
     DBUG_PRINT("info", ("Found user %s", user.user.str));
     push_new_user(user);
   }
-  my_qsort((uchar*) dynamic_element(&acl_users,0,ACL_USER*),acl_users.elements,
-	   sizeof(ACL_USER),(qsort_cmp) acl_compare);
+  rebuild_acl_users();
   end_read_record(&read_record_info);
   freeze_size(&acl_users);
 
@@ -2038,8 +2041,7 @@ static bool acl_load(THD *thd, const Grant_tables& tables)
 #endif
     (void) push_dynamic(&acl_dbs,(uchar*) &db);
   }
-  my_qsort((uchar*) dynamic_element(&acl_dbs,0,ACL_DB*),acl_dbs.elements,
-	   sizeof(ACL_DB),(qsort_cmp) acl_compare);
+  rebuild_acl_dbs();
   end_read_record(&read_record_info);
   freeze_size(&acl_dbs);
 
@@ -2317,13 +2319,163 @@ static ulong get_sort(uint count,...)
 }
 
 
-static int acl_compare(ACL_ACCESS *a,ACL_ACCESS *b)
+static int acl_compare(const ACL_ACCESS *a, const ACL_ACCESS *b)
 {
   if (a->sort > b->sort)
     return -1;
   if (a->sort < b->sort)
     return 1;
   return 0;
+}
+
+static int acl_user_compare(const ACL_USER *a, const ACL_USER *b)
+{
+  int res= strcmp(a->user.str, b->user.str);
+  if (res)
+    return res;
+
+  res= acl_compare(a, b);
+  if (res)
+    return res;
+
+  /*
+    For more deterministic results, resolve ambiguity between
+    "localhost" and "127.0.0.1"/"::1" by sorting "localhost" before
+    loopback addresses.
+    Test suite (on Windows) expects "root@localhost", even if
+    root@::1 would also match.
+  */
+  return -strcmp(a->host.hostname, b->host.hostname);
+}
+
+static int acl_db_compare(const ACL_DB *a, const ACL_DB *b)
+{
+  int res= strcmp(a->user, b->user);
+  if (res)
+    return res;
+
+  return acl_compare(a, b);
+}
+
+static void rebuild_acl_users()
+{
+   my_qsort((uchar*)dynamic_element(&acl_users, 0, ACL_USER*), acl_users.elements,
+     sizeof(ACL_USER), (qsort_cmp)acl_user_compare);
+}
+
+static void rebuild_acl_dbs()
+{
+  my_qsort((uchar*)dynamic_element(&acl_dbs, 0, ACL_DB*), acl_dbs.elements,
+    sizeof(ACL_DB), (qsort_cmp)acl_db_compare);
+}
+
+
+static inline const char *get_username(const ACL_DB& acl_db)
+{
+  return acl_db.user;
+}
+
+
+static inline const char *get_username(const ACL_USER& acl_user)
+{
+  return acl_user.user.str;
+}
+
+/*
+  Return index of the first entry with given user in the array,
+  or UINT_MAX if not found.
+
+  Assumes the array is sorted by get_username
+*/
+template<typename T> uint find_first_user(T* arr, uint len, const char *user)
+{
+  uint low= 0;
+  uint high= len - 1;
+  uint mid;
+  if(!len)
+    return  UINT_MAX;
+
+#ifndef DBUG_OFF
+  for (uint i = 0; i < len - 1; i++)
+    DBUG_ASSERT(strcmp(get_username(arr[i]), get_username(arr[i + 1])) <= 0);
+#endif
+  while (low <= high)
+  {
+    mid = low + (high - low) / 2;
+    int cmp = strcmp(get_username(arr[mid]), user);
+    if (cmp == 0)
+    {
+      /*
+        We are looking for the left-most element in the array with the given value.
+        Thus, even if value is found, we still have to check the left neighbor,
+        and if it has the same value, continue the search.
+      */
+      if (mid > 0 && !strcmp(get_username(arr[mid - 1]), user))
+        cmp = 1;
+    }
+
+    if (cmp > 0)
+    {
+      if (mid == 0)
+        break;
+      high= mid - 1;
+    }
+    else if (cmp < 0)
+      low= mid + 1;
+    else
+      return mid;
+  }
+  return UINT_MAX;
+}
+
+static uint acl_find_user_by_name(const char *user)
+{
+  return find_first_user<ACL_USER>((ACL_USER *)acl_users.buffer,acl_users.elements,user);
+}
+
+static uint acl_find_db_by_username(const char *user)
+{
+  return find_first_user<ACL_DB>((ACL_DB *)acl_dbs.buffer, acl_dbs.elements, user);
+}
+
+static bool acl_db_matches(ACL_DB *acl_db, const char *db, const char *host, const char *ip, my_bool db_is_pattern)
+{
+  return compare_hostname(&acl_db->host, host, ip) && (!acl_db->db || (db && !wild_compare(db, acl_db->db, db_is_pattern)));
+}
+
+static ACL_DB *acl_db_find(const char *db, const char *user, const char *host, const char *ip, my_bool db_is_pattern)
+{
+  uint i;
+  ACL_DB *ret = NULL;
+
+  // Check databases with matching user name.
+  uint start= acl_find_db_by_username(user);
+  for (i= start; i < acl_dbs.elements; i++)
+  {
+    ACL_DB *acl_db= dynamic_element(&acl_dbs, i, ACL_DB*);
+    if (i > start && strcmp(user, acl_db->user))
+      break;
+
+    if(acl_db_matches(acl_db, db, host, ip,db_is_pattern))
+    {
+      ret= acl_db;
+      break;
+    }
+  }
+
+  // Look also for anonymous user (at the start of array due to sort by name).
+  for (i = 0; i < acl_dbs.elements; i++)
+  {
+    ACL_DB *acl_db= dynamic_element(&acl_dbs, i, ACL_DB*);
+    if (*acl_db->user || (ret && acl_compare(acl_db, ret) >= 0))
+      break;
+    if (acl_db_matches(acl_db, db, host, ip, db_is_pattern))
+    {
+      ret= acl_db;
+      break;
+    }
+  }
+  return ret;
 }
 
 
@@ -2347,7 +2499,6 @@ bool acl_getroot(Security_context *sctx, const char *user, const char *host,
                  const char *ip, const char *db)
 {
   int res= 1;
-  uint i;
   ACL_USER *acl_user= 0;
   DBUG_ENTER("acl_getroot");
 
@@ -2380,21 +2531,10 @@ bool acl_getroot(Security_context *sctx, const char *user, const char *host,
     if (acl_user)
     {
       res= 0;
-      for (i=0 ; i < acl_dbs.elements ; i++)
-      {
-        ACL_DB *acl_db= dynamic_element(&acl_dbs, i, ACL_DB*);
-        if (!*acl_db->user || !strcmp(user, acl_db->user))
-        {
-          if (compare_hostname(&acl_db->host, host, ip))
-          {
-            if (!acl_db->db || (db && !wild_compare(db, acl_db->db, 0)))
-            {
-              sctx->db_access= acl_db->access;
-              break;
-            }
-          }
-        }
-      }
+      ACL_DB *acl_db= acl_db_find(db, user, host, ip, FALSE);
+      if(acl_db)
+        sctx->db_access = acl_db->access;
+
       sctx->master_access= acl_user->access;
 
       strmake_buf(sctx->priv_user, user);
@@ -2409,21 +2549,10 @@ bool acl_getroot(Security_context *sctx, const char *user, const char *host,
     if (acl_role)
     {
       res= 0;
-      for (i=0 ; i < acl_dbs.elements ; i++)
-      {
-        ACL_DB *acl_db= dynamic_element(&acl_dbs, i, ACL_DB*);
-        if (!*acl_db->user || !strcmp(user, acl_db->user))
-        {
-          if (compare_hostname(&acl_db->host, "", ""))
-          {
-            if (!acl_db->db || (db && !wild_compare(db, acl_db->db, 0)))
-            {
-              sctx->db_access= acl_db->access;
-              break;
-            }
-          }
-        }
-      }
+      ACL_DB *acl_db = acl_db_find(db, user, "", "", FALSE);
+      if (acl_db)
+        sctx->db_access = acl_db->access;
+
       sctx->master_access= acl_role->access;
 
       strmake_buf(sctx->priv_role, user);
@@ -2622,7 +2751,7 @@ static bool acl_update_db(const char *user, const char *host, const char *db,
 
   bool updated= false;
 
-  for (uint i=0 ; i < acl_dbs.elements ; i++)
+  for (uint i=acl_find_db_by_username(user) ; i < acl_dbs.elements ; i++)
   {
     ACL_DB *acl_db=dynamic_element(&acl_dbs,i,ACL_DB*);
     if (!strcmp(user, acl_db->user))
@@ -2645,6 +2774,8 @@ static bool acl_update_db(const char *user, const char *host, const char *db,
         }
       }
     }
+    else
+     break;
   }
 
   return updated;
@@ -2676,8 +2807,7 @@ static void acl_insert_db(const char *user, const char *host, const char *db,
   acl_db.initial_access= acl_db.access= privileges;
   acl_db.sort=get_sort(3,acl_db.host.hostname,acl_db.db,acl_db.user);
   (void) push_dynamic(&acl_dbs,(uchar*) &acl_db);
-  my_qsort((uchar*) dynamic_element(&acl_dbs,0,ACL_DB*),acl_dbs.elements,
-	   sizeof(ACL_DB),(qsort_cmp) acl_compare);
+  rebuild_acl_dbs();
 }
 
 
@@ -2723,26 +2853,18 @@ ulong acl_get(const char *host, const char *ip,
   /*
     Check if there are some access rights for database and user
   */
-  for (i=0 ; i < acl_dbs.elements ; i++)
+  ACL_DB *acl_db = acl_db_find(db,user, host, ip, db_is_pattern);
+
+  if (acl_db)
   {
-    ACL_DB *acl_db=dynamic_element(&acl_dbs,i,ACL_DB*);
-    if (!*acl_db->user || !strcmp(user, acl_db->user))
-    {
-      if (compare_hostname(&acl_db->host,host,ip))
-      {
-        if (!acl_db->db || !wild_compare(db,acl_db->db,db_is_pattern))
-        {
-          db_access=acl_db->access;
-          if (acl_db->host.hostname)
-            goto exit;                          // Fully specified. Take it
-          /* the host table is not used for roles */
-          if ((!host || !host[0]) && !acl_db->host.hostname && find_acl_role(user))
-            goto exit;
-          break; /* purecov: tested */
-	}
-      }
-    }
+    db_access= acl_db->access;
+    if (acl_db->host.hostname)
+      goto exit; // Fully specified. Take it
+    /* the host table is not used for roles */
+    if ((!host || !host[0]) && !acl_db->host.hostname && find_acl_role(user))
+      goto exit;
   }
+
   if (!db_access)
     goto exit;					// Can't be better
 
@@ -3397,20 +3519,36 @@ bool is_acl_user(const char *host, const char *user)
 */
 static ACL_USER *find_user_or_anon(const char *host, const char *user, const char *ip)
 {
-  ACL_USER *result= NULL;
   mysql_mutex_assert_owner(&acl_cache->lock);
-  for (uint i=0; i < acl_users.elements; i++)
+
+  uint start= acl_find_user_by_name(user);
+  ACL_USER *ret= 0;
+  /* Search for matching user name. */
+  for(uint i= start; i < acl_users.elements; i++)
   {
-    ACL_USER *acl_user_tmp= dynamic_element(&acl_users, i, ACL_USER*);
-    if ((!acl_user_tmp->user.length ||
-         !strcmp(user, acl_user_tmp->user.str)) &&
-         compare_hostname(&acl_user_tmp->host, host, ip))
+    ACL_USER *acl_user = dynamic_element(&acl_users, i, ACL_USER*);
+    if (i > start && strcmp(acl_user->user.str, user))
+      break;
+    if (compare_hostname(&acl_user->host, host, ip))
     {
-      result= acl_user_tmp;
+      ret= acl_user;
       break;
     }
   }
-  return result;
+
+  /* Search for anonymous user (from start of the array, due to name sorting).*/
+  for(uint i= 0; i < acl_users.elements; i++)
+  {
+    ACL_USER *acl_user= dynamic_element(&acl_users, i, ACL_USER*);
+    if (acl_user->user.length || (ret && acl_compare(acl_user, ret) >= 0))
+      break;
+    if (compare_hostname(&acl_user->host, host, ip))
+    {
+      ret= acl_user;
+      break;
+    }
+  }
+  return ret;
 }
 
 
@@ -3420,11 +3558,15 @@ static ACL_USER *find_user_or_anon(const char *host, const char *user, const cha
 static ACL_USER *find_user_exact(const char *host, const char *user)
 {
   mysql_mutex_assert_owner(&acl_cache->lock);
+  uint start= acl_find_user_by_name(user);
 
-  for (uint i=0 ; i < acl_users.elements ; i++)
+  for (uint i= start; i < acl_users.elements; i++)
   {
-    ACL_USER *acl_user=dynamic_element(&acl_users, i, ACL_USER*);
-    if (acl_user->eq(user, host))
+    ACL_USER *acl_user= dynamic_element(&acl_users, i, ACL_USER*);
+    if (i > start && strcmp(acl_user->user.str, user))
+      return 0;
+
+    if (!my_strcasecmp(system_charset_info, acl_user->host.hostname, host))
       return acl_user;
   }
   return 0;
@@ -3437,10 +3579,14 @@ static ACL_USER * find_user_wild(const char *host, const char *user, const char 
 {
   mysql_mutex_assert_owner(&acl_cache->lock);
 
-  for (uint i=0 ; i < acl_users.elements ; i++)
+  uint start = acl_find_user_by_name(user);
+
+  for (uint i= start; i < acl_users.elements; i++)
   {
     ACL_USER *acl_user=dynamic_element(&acl_users,i,ACL_USER*);
-    if (acl_user->wild_eq(user, host, ip))
+    if (i > start && strcmp(acl_user->user.str, user))
+      break;
+    if (compare_hostname(&acl_user->host, host, ip ? ip : host))
       return acl_user;
   }
   return 0;
@@ -3970,8 +4116,7 @@ end:
       else
       {
         push_new_user(new_acl_user);
-        my_qsort(dynamic_element(&acl_users, 0, ACL_USER*), acl_users.elements,
-                 sizeof(ACL_USER),(qsort_cmp) acl_compare);
+        rebuild_acl_users();
 
         /* Rebuild 'acl_check_hosts' since 'acl_users' has been modified */
         rebuild_check_host();
@@ -5615,7 +5760,7 @@ static int update_role_db(ACL_DB *merged, ACL_DB **first, ulong access,
       2. it's O(N) operation, and we may need many of them
       so we only mark elements deleted and will delete later.
     */
-    merged->sort= 0; // lower than any valid ACL_DB sort value, will be sorted last
+    merged->sort= 0; // mark for deletion
     return 4;
   }
   else if (merged->access != access)
@@ -5681,24 +5826,29 @@ static bool merge_role_db_privileges(ACL_ROLE *grantee, const char *dbname,
   }
   update_flags|= update_role_db(merged, first, access, grantee->user.str);
 
-  /*
-    to make this code a bit simpler, we sort on deletes, to move
-    deleted elements to the end of the array. strictly speaking it's
-    unnecessary, it'd be faster to remove them in one O(N) array scan.
-    
-    on the other hand, qsort on almost sorted array is pretty fast anyway...
-  */
-  if (update_flags & (2|4))
-  { // inserted or deleted, need to sort
-    my_qsort((uchar*) dynamic_element(&acl_dbs,0,ACL_DB*),acl_dbs.elements,
-             sizeof(ACL_DB),(qsort_cmp) acl_compare);
-  }
   if (update_flags & 4)
-  { // deleted, trim the end
-    while (acl_dbs.elements &&
-           dynamic_element(&acl_dbs, acl_dbs.elements-1, ACL_DB*)->sort == 0)
-      acl_dbs.elements--;
+  {
+    // Remove elements marked for deletion.
+    uint count= 0;
+    for(uint i= 0; i < acl_dbs.elements; i++)
+    {
+      ACL_DB *acl_db= dynamic_element(&acl_dbs, i, ACL_DB*);
+      if (acl_db->sort)
+      {
+        if (i > count)
+          set_dynamic(&acl_dbs, acl_db, count);
+        count++;
+      }
+    }
+    acl_dbs.elements= count;
   }
+
+
+  if (update_flags & 2)
+  { // inserted, need to sort
+    rebuild_acl_dbs();
+  }
+
   return update_flags;
 }
 
@@ -10244,6 +10394,8 @@ bool mysql_rename_user(THD *thd, List <LEX_USER> &list)
     }
     some_users_renamed= TRUE;
   }
+
+  rebuild_acl_users();
 
   /* Rebuild 'acl_check_hosts' since 'acl_users' has been modified */
   rebuild_check_host();
