@@ -6075,9 +6075,13 @@ TRP_INDEX_INTERSECT *get_best_index_intersect(PARAM *param, SEL_TREE *tree,
   PARTIAL_INDEX_INTERSECT_INFO init;
   TRP_INDEX_INTERSECT *intersect_trp= NULL;
   TABLE *table= param->table;
+  Opt_trace_context *const trace = &param->thd->opt_trace;
+  Json_writer* writer= trace->get_current_json();
   
   
   DBUG_ENTER("get_best_index_intersect");
+
+  Json_writer_object trace_idx_interect(writer, "analyzing_roworder_intersect");
 
   if (prepare_search_best_index_intersect(param, tree, &common, &init,
                                           read_time))
@@ -6539,7 +6543,9 @@ static double ror_scan_selectivity(const ROR_INTERSECT_INFO *info,
 */
 
 static bool ror_intersect_add(ROR_INTERSECT_INFO *info,
-                              ROR_SCAN_INFO* ror_scan, bool is_cpk_scan)
+                              ROR_SCAN_INFO* ror_scan,
+                              Json_writer_object *trace_costs,
+                              bool is_cpk_scan)
 {
   double selectivity_mult= 1.0;
 
@@ -6566,13 +6572,18 @@ static bool ror_intersect_add(ROR_INTERSECT_INFO *info,
       each record of every scan. Assuming 1/TIME_FOR_COMPARE_ROWID
       per check this gives us:
     */
-    info->index_scan_costs += rows2double(info->index_records) / 
+    const double idx_cost= rows2double(info->index_records) /
                               TIME_FOR_COMPARE_ROWID;
+    info->index_scan_costs += idx_cost;
+    trace_costs->add_member("index_scan_cost")
+               .add_double(idx_cost);
   }
   else
   {
     info->index_records += info->param->quick_rows[ror_scan->keynr];
     info->index_scan_costs += ror_scan->index_read_cost;
+    trace_costs->add_member("index_scan_cost")
+               .add_double(ror_scan->index_read_cost);
     bitmap_union(&info->covered_fields, &ror_scan->covered_fields);
     if (!info->is_covering && bitmap_is_subset(&info->param->needed_fields,
                                                &info->covered_fields))
@@ -6583,13 +6594,20 @@ static bool ror_intersect_add(ROR_INTERSECT_INFO *info,
   }
 
   info->total_cost= info->index_scan_costs;
+  trace_costs->add_member("cumulateed_index_scan_cost")
+               .add_double(info->index_scan_costs);
   DBUG_PRINT("info", ("info->total_cost: %g", info->total_cost));
   if (!info->is_covering)
   {
-    info->total_cost += 
-      get_sweep_read_cost(info->param, double2rows(info->out_rows));
+    double sweep_cost= get_sweep_read_cost(info->param,
+                                          double2rows(info->out_rows));
+    info->total_cost += sweep_cost;
+    trace_costs->add_member("disk_sweep_cost").add_double(sweep_cost);
     DBUG_PRINT("info", ("info->total_cost= %g", info->total_cost));
   }
+  else
+    trace_costs->add_member("disk_sweep_cost").add_double(0);
+
   DBUG_PRINT("info", ("New out_rows: %g", info->out_rows));
   DBUG_PRINT("info", ("New cost: %g, %scovering", info->total_cost,
                       info->is_covering?"" : "non-"));
@@ -6669,10 +6687,17 @@ TRP_ROR_INTERSECT *get_best_ror_intersect(const PARAM *param, SEL_TREE *tree,
   uint idx;
   double min_cost= DBL_MAX;
   DBUG_ENTER("get_best_ror_intersect");
+  Opt_trace_context *const trace = &param->thd->opt_trace;
+  Json_writer *writer= trace->get_current_json();
+  Json_writer_object trace_ror(writer, "analyzing_roworder_intersect");
 
   if ((tree->n_ror_scans < 2) || !param->table->stat_records() ||
       !optimizer_flag(param->thd, OPTIMIZER_SWITCH_INDEX_MERGE_INTERSECT))
-    DBUG_RETURN(NULL);
+    {
+      if (tree->n_ror_scans < 2)
+        trace_ror.add_member("cause").add_str("too_few_roworder_scans");
+      DBUG_RETURN(NULL);
+    }
 
   /*
     Step1: Collect ROR-able SEL_ARGs and create ROR_SCAN_INFO for each of 
@@ -6747,15 +6772,32 @@ TRP_ROR_INTERSECT *get_best_ror_intersect(const PARAM *param, SEL_TREE *tree,
   ROR_SCAN_INFO **intersect_scans_best;
   cur_ror_scan= tree->ror_scans;
   intersect_scans_best= intersect_scans;
+  Json_writer_array trace_isect_idx(writer, "intersecting_indexes");
   while (cur_ror_scan != tree->ror_scans_end && !intersect->is_covering)
   {
+    Json_writer_object trace_idx(writer);
+    trace_idx.add_member("index")
+             .add_str(param->table->key_info[(*cur_ror_scan)->keynr].name);
+
     /* S= S + first(R);  R= R - first(R); */
-    if (!ror_intersect_add(intersect, *cur_ror_scan, FALSE))
+    if (!ror_intersect_add(intersect, *cur_ror_scan, &trace_idx, FALSE))
     {
+      //trace_idx.add_member().add_str();
+
+      trace_idx.add_member("usable").add_bool(false);
+      trace_idx.add_member("cause")
+               .add_str("does_not_reduce_cost_of_intersect");
       cur_ror_scan++;
       continue;
     }
     
+    trace_idx.add_member("cumulative_total_cost")
+             .add_double(intersect->total_cost);
+    trace_idx.add_member("usable").add_bool(true);
+    trace_idx.add_member("matching_rows_now").add_ll(intersect->out_rows);
+    trace_idx.add_member("intersect_covering_with_this_index")
+             .add_bool(intersect->is_covering);
+
     *(intersect_scans_end++)= *(cur_ror_scan++);
 
     if (intersect->total_cost < min_cost)
@@ -6764,12 +6806,21 @@ TRP_ROR_INTERSECT *get_best_ror_intersect(const PARAM *param, SEL_TREE *tree,
       ror_intersect_cpy(intersect_best, intersect);
       intersect_scans_best= intersect_scans_end;
       min_cost = intersect->total_cost;
+      trace_idx.add_member("chosen").add_bool(true);
+    }
+    else
+    {
+      trace_idx.add_member("chosen").add_bool(false);
+      trace_idx.add_member("cause").add_str("does_not_reduce_cost");
     }
   }
+  trace_isect_idx.end();
 
   if (intersect_scans_best == intersect_scans)
   {
     DBUG_PRINT("info", ("None of scans increase selectivity"));
+    trace_ror.add_member("chosen").add_bool(false);
+    trace_ror.add_member("cause").add_str("does_not_increase_selectivity");
     DBUG_RETURN(NULL);
   }
     
@@ -6787,16 +6838,35 @@ TRP_ROR_INTERSECT *get_best_ror_intersect(const PARAM *param, SEL_TREE *tree,
     Check if we should add a CPK scan. If the obtained ROR-intersection is 
     covering, it doesn't make sense to add CPK scan.
   */
+  Json_writer_object trace_cpk(writer, "clustered_pk");
   if (cpk_scan && !intersect->is_covering)
   {
-    if (ror_intersect_add(intersect, cpk_scan, TRUE) && 
+    if (ror_intersect_add(intersect, cpk_scan, &trace_cpk, TRUE) &&
         (intersect->total_cost < min_cost))
+    {
+      trace_cpk.add_member("clustered_pk_scan_added_to_intersect")
+               .add_bool(true);
+      trace_cpk.add_member("cumulated_cost")
+               .add_double(intersect->total_cost);
       intersect_best= intersect; //just set pointer here
+    }
     else
+    {
+      trace_cpk.add_member("clustered_pk_added_to_intersect")
+               .add_bool(false);
+      trace_cpk.add_member("cause").add_str("cost");
       cpk_scan= 0; // Don't use cpk_scan
+    }
   }
   else
+  {
+    trace_cpk.add_member("clustered_pk_added_to_intersect").add_bool(false);
+    trace_cpk.add_member("cause")
+             .add_str(cpk_scan ? "roworder_is_covering"
+                               : "no_clustered_pk_index");
     cpk_scan= 0;                                // Don't use cpk_scan
+  }
+  trace_cpk.end();
 
   /* Ok, return ROR-intersect plan if we have found one */
   TRP_ROR_INTERSECT *trp= NULL;
@@ -6823,6 +6893,17 @@ TRP_ROR_INTERSECT *get_best_ror_intersect(const PARAM *param, SEL_TREE *tree,
     DBUG_PRINT("info", ("Returning non-covering ROR-intersect plan:"
                         "cost %g, records %lu",
                         trp->read_cost, (ulong) trp->records));
+    trace_ror.add_member("rows").add_ll(trp->records);
+    trace_ror.add_member("cost").add_double(trp->read_cost);
+    trace_ror.add_member("covering").add_bool(trp->is_covering);
+    trace_ror.add_member("chosen").add_bool(true);
+  }
+  else
+  {
+    trace_ror.add_member("chosen").add_bool(false);
+    trace_ror.add_member("cause").add_str( (read_time > min_cost)
+                                                ? "too_few_indexes_to_merge"
+                                                : "cost");
   }
   DBUG_RETURN(trp);
 }
@@ -7010,6 +7091,8 @@ static TRP_RANGE *get_key_scans_params(PARAM *param, SEL_TREE *tree,
           UNINIT_VAR(best_buf_size);             /* protected by key_to_read */
   TRP_RANGE* read_plan= NULL;
   DBUG_ENTER("get_key_scans_params");
+  Opt_trace_context *const trace = &param->thd->opt_trace;
+  Json_writer *writer= trace->get_current_json();
   /*
     Note that there may be trees that have type SEL_TREE::KEY but contain no
     key reads at all, e.g. tree for expression "key1 is not null" where key1
@@ -7017,6 +7100,8 @@ static TRP_RANGE *get_key_scans_params(PARAM *param, SEL_TREE *tree,
   */
   DBUG_EXECUTE("info", print_sel_tree(param, tree, &tree->keys_map,
                                       "tree scans"););
+  Json_writer_array range_scan_alt(writer, "range_scan_alternatives");
+
   tree->ror_scans_map.clear_all();
   tree->n_ror_scans= 0;
   tree->index_scans= 0;
@@ -7045,6 +7130,10 @@ static TRP_RANGE *get_key_scans_params(PARAM *param, SEL_TREE *tree,
       bool read_index_only= index_read_must_be_used ? TRUE :
                             (bool) param->table->covering_keys.is_set(keynr);
 
+      Json_writer_object trace_idx(writer);
+      trace_idx.add_member("index")
+               .add_str(param->table->key_info[keynr].name);
+
       found_records= check_quick_select(param, idx, read_index_only, key,
                                         update_tbl_stats, &mrr_flags,
                                         &buf_size, &cost);
@@ -7053,6 +7142,14 @@ static TRP_RANGE *get_key_scans_params(PARAM *param, SEL_TREE *tree,
           (index_scan= (INDEX_SCAN_INFO *)alloc_root(param->mem_root,
 						     sizeof(INDEX_SCAN_INFO))))
       {
+        Json_writer_array trace_range(writer, "ranges");
+
+        const KEY &cur_key = param->table->key_info[keynr];
+        const KEY_PART_INFO *key_part = cur_key.key_part;
+
+        String range_info;
+        range_info.set_charset(system_charset_info);
+
         index_scan->idx= idx;
         index_scan->keynr= keynr;
         index_scan->key_info= &param->table->key_info[keynr];
@@ -7061,6 +7158,17 @@ static TRP_RANGE *get_key_scans_params(PARAM *param, SEL_TREE *tree,
         index_scan->records= found_records;
         index_scan->sel_arg= key;
         *tree->index_scans_end++= index_scan;
+
+        append_range_all_keyparts(&trace_range, NULL, &range_info, key,
+                                  key_part);
+        trace_range.end();
+
+        trace_idx.add_member("rowid_ordered").add_bool(param->is_ror_scan);
+        trace_idx.add_member("using_mrr")
+                 .add_bool(!(mrr_flags & HA_MRR_USE_DEFAULT_IMPL));
+        trace_idx.add_member("index_only").add_bool(read_index_only);
+        trace_idx.add_member("rows").add_ll(found_records);
+        trace_idx.add_member("cost").add_double(cost.total_cost());
       }        
       if ((found_records != HA_POS_ERROR) && param->is_ror_scan)
       {
@@ -7076,6 +7184,19 @@ static TRP_RANGE *get_key_scans_params(PARAM *param, SEL_TREE *tree,
         best_idx= idx;
         best_mrr_flags= mrr_flags;
         best_buf_size=  buf_size;
+        trace_idx.add_member("chosen").add_bool(true);
+      }
+      else
+      {
+        trace_idx.add_member("chosen").add_bool(false);
+        if (found_records == HA_POS_ERROR)
+          if (key->type == SEL_ARG::Type::MAYBE_KEY)
+            trace_idx.add_member("cause")
+                     .add_str("depends_on_unread_values");
+          else
+            trace_idx.add_member("cause").add_str("unknown");
+        else
+          trace_idx.add_member("cause").add_str("cost");
       }
     }
   }
