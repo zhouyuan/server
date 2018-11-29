@@ -2252,8 +2252,33 @@ public:
     DBUG_RETURN(quick);
   }
   void trace_basic_info(const PARAM *param,
-                        Json_writer_object *trace_object) const{}
+                        Json_writer_object *trace_object) const;
 };
+
+void TRP_RANGE::trace_basic_info(const PARAM *param,
+                                 Json_writer_object *trace_object) const
+{
+  DBUG_ASSERT(param->using_real_indexes);
+  Opt_trace_context *const trace = &param->thd->opt_trace;
+  Json_writer* writer= trace->get_current_json();
+  const uint keynr_in_table = param->real_keynr[key_idx];
+
+  const KEY &cur_key = param->table->key_info[keynr_in_table];
+  const KEY_PART_INFO *key_part = cur_key.key_part;
+
+  trace_object->add_member("type").add_str("range_scan");
+  trace_object->add_member("index").add_str(cur_key.name);
+  trace_object->add_member("rows").add_ll(records);
+
+  Json_writer_array trace_range(writer, "ranges");
+
+  // TRP_RANGE should not be created if there are no range intervals
+  DBUG_ASSERT(key);
+
+  String range_info;
+  range_info.set_charset(system_charset_info);
+  append_range_all_keyparts(&trace_range, NULL, &range_info, key, key_part);
+}
 
 
 /* Plan for QUICK_ROR_INTERSECT_SELECT scan. */
@@ -2273,8 +2298,9 @@ public:
   bool is_covering; /* TRUE if no row retrieval phase is necessary */
   double index_scan_costs; /* SUM(cost(index_scan)) */
   void trace_basic_info(const PARAM *param,
-                        Json_writer_object *trace_object) const{}
+                        Json_writer_object *trace_object) const;
 };
+
 
 
 /*
@@ -2293,9 +2319,22 @@ public:
   TABLE_READ_PLAN **first_ror; /* array of ptrs to plans for merged scans */
   TABLE_READ_PLAN **last_ror;  /* end of the above array */
   void trace_basic_info(const PARAM *param,
-                        Json_writer_object *trace_object) const{}
+                        Json_writer_object *trace_object) const;
 };
 
+void TRP_ROR_UNION::trace_basic_info(const PARAM *param,
+                                     Json_writer_object *trace_object) const
+{
+  Opt_trace_context *const trace = &param->thd->opt_trace;
+  Json_writer* writer= trace->get_current_json();
+  trace_object->add_member("type").add_str("index_roworder_union");
+  Json_writer_array ota(writer, "union_of");
+  for (TABLE_READ_PLAN **current = first_ror; current != last_ror; current++)
+  {
+    Json_writer_object trp_info(writer);
+    (*current)->trace_basic_info(param, &trp_info);
+  }
+}
 
 /*
   Plan for QUICK_INDEX_INTERSECT_SELECT scan.
@@ -2315,10 +2354,24 @@ public:
   /* keys whose scans are to be filtered by cpk conditions */
   key_map filtered_scans;
   void trace_basic_info(const PARAM *param,
-                        Json_writer_object *trace_object) const{}
+                        Json_writer_object *trace_object) const;
 
 };
 
+void TRP_INDEX_INTERSECT::trace_basic_info(const PARAM *param,
+                                       Json_writer_object *trace_object) const
+{
+  Opt_trace_context *const trace = &param->thd->opt_trace;
+  Json_writer* writer= trace->get_current_json();
+  trace_object->add_member("type").add_str("index_sort_intersect");
+  Json_writer_array ota(writer, "index_sort_intersect_of");
+  for (TRP_RANGE **current = range_scans; current != range_scans_end;
+                                                          current++)
+  {
+    Json_writer_object trp_info(writer);
+    (*current)->trace_basic_info(param, &trp_info);
+  }
+}
 
 /*
   Plan for QUICK_INDEX_MERGE_SELECT scan.
@@ -2336,9 +2389,23 @@ public:
   TRP_RANGE **range_scans; /* array of ptrs to plans of merged scans */
   TRP_RANGE **range_scans_end; /* end of the array */
   void trace_basic_info(const PARAM *param,
-                        Json_writer_object *trace_object) const{}
+                        Json_writer_object *trace_object) const;
 };
 
+void TRP_INDEX_MERGE::trace_basic_info(const PARAM *param,
+                                       Json_writer_object *trace_object) const
+{
+  Opt_trace_context *const trace = &param->thd->opt_trace;
+  Json_writer* writer= trace->get_current_json();
+  trace_object->add_member("type").add_str("index_merge");
+  Json_writer_array ota(writer, "index_merge_of");
+  for (TRP_RANGE **current = range_scans; current != range_scans_end;
+                                                          current++)
+  {
+    Json_writer_object trp_info(writer);
+    (*current)->trace_basic_info(param, &trp_info);
+  }
+}
 
 /*
   Plan for a QUICK_GROUP_MIN_MAX_SELECT scan. 
@@ -2904,6 +2971,7 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
         DBUG_PRINT("info",("No range reads possible,"
                            " trying to construct index_merge"));
         List_iterator_fast<SEL_IMERGE> it(tree->merges);
+        Json_writer_array trace_idx_merge(writer, "analyzing_index_merge_union");
         while ((imerge= it++))
         {
           new_conj_trp= get_best_disjunct_quick(&param, imerge, best_read_time);
@@ -2943,10 +3011,12 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
       Json_writer_object trace_range_summary(writer,
                                            "chosen_range_access_summary");
       {
-        /*
-          trace the best plan
-        */
+        Json_writer_object trace_range_plan(writer, "range_access_plan");
+        best_trp->trace_basic_info(&param, &trace_range_plan);
       }
+      trace_range_summary.add_member("rows_for_plan").add_ll(quick->records);
+      trace_range_summary.add_member("cost_for_plan").add_double(quick->read_time);
+      trace_range_summary.add_member("chosen").add_bool(true);
     }
 
     free_root(&alloc,MYF(0));			// Return memory & allocator
@@ -4941,6 +5011,10 @@ TABLE_READ_PLAN *get_best_disjunct_quick(PARAM *param, SEL_IMERGE *imerge,
                                              sizeof(TRP_RANGE*)*
                                              n_child_scans)))
     DBUG_RETURN(NULL);
+  Opt_trace_context *const trace = &param->thd->opt_trace;
+  Json_writer* writer= trace->get_current_json();
+  Json_writer_object trace_best_disjunct(writer);
+  Json_writer_array to_merge(writer, "indexes_to_merge");
   /*
     Collect best 'range' scan for each of disjuncts, and, while doing so,
     analyze possibility of ROR scans. Also calculate some values needed by
@@ -4952,6 +5026,7 @@ TABLE_READ_PLAN *get_best_disjunct_quick(PARAM *param, SEL_IMERGE *imerge,
   {
     DBUG_EXECUTE("info", print_sel_tree(param, *ptree, &(*ptree)->keys_map,
                                         "tree in SEL_IMERGE"););
+    Json_writer_object trace_idx(writer);
     if (!(*cur_child= get_key_scans_params(param, *ptree, TRUE, FALSE, read_time)))
     {
       /*
@@ -4963,8 +5038,12 @@ TABLE_READ_PLAN *get_best_disjunct_quick(PARAM *param, SEL_IMERGE *imerge,
       imerge_too_expensive= TRUE;
     }
     if (imerge_too_expensive)
+    {
+      trace_idx.add_member("chosen").add_bool(false);
+      trace_idx.add_member("cause").add_str("cost");
       continue;
-
+    }
+    const uint keynr_in_table = param->real_keynr[(*cur_child)->key_idx];
     imerge_cost += (*cur_child)->read_cost;
     all_scans_ror_able &= ((*ptree)->n_ror_scans > 0);
     all_scans_rors &= (*cur_child)->is_ror;
@@ -4977,9 +5056,18 @@ TABLE_READ_PLAN *get_best_disjunct_quick(PARAM *param, SEL_IMERGE *imerge,
     }
     else
       non_cpk_scan_records += (*cur_child)->records;
+    trace_idx
+        .add_member("index_to_merge")
+        .add_str(param->table->key_info[keynr_in_table].name);
+    trace_idx.add_member("cumulated_cost").add_double(imerge_cost);
   }
 
+  to_merge.end();
+
   DBUG_PRINT("info", ("index_merge scans cost %g", imerge_cost));
+  trace_best_disjunct.add_member("cost_of_reading_ranges")
+                     .add_double(imerge_cost);
+
   if (imerge_too_expensive || (imerge_cost > read_time) ||
       ((non_cpk_scan_records+cpk_scan_records >=
         param->table->stat_records()) &&
@@ -4991,6 +5079,8 @@ TABLE_READ_PLAN *get_best_disjunct_quick(PARAM *param, SEL_IMERGE *imerge,
     */
     DBUG_PRINT("info", ("Sum of index_merge scans is more expensive than "
                         "full table scan, bailing out"));
+    trace_best_disjunct.add_member("chosen").add_bool(false);
+    trace_best_disjunct.add_member("cause").add_str("cost");
     DBUG_RETURN(NULL);
   }
 
@@ -5003,6 +5093,9 @@ TABLE_READ_PLAN *get_best_disjunct_quick(PARAM *param, SEL_IMERGE *imerge,
       optimizer_flag(param->thd, OPTIMIZER_SWITCH_INDEX_MERGE_UNION))
   {
     roru_read_plans= (TABLE_READ_PLAN**)range_scans;
+    trace_best_disjunct.add_member("use_roworder_union").add_bool(true);
+    trace_best_disjunct.add_member("cause")
+                       .add_str("always_cheaper_than_non_roworder_retrieval");
     goto skip_to_ror_scan;
   }
 
@@ -5012,16 +5105,26 @@ TABLE_READ_PLAN *get_best_disjunct_quick(PARAM *param, SEL_IMERGE *imerge,
       Add one ROWID comparison for each row retrieved on non-CPK scan.  (it
       is done in QUICK_RANGE_SELECT::row_in_ranges)
      */
-    imerge_cost += non_cpk_scan_records / TIME_FOR_COMPARE_ROWID;
+    const double rid_comp_cost= non_cpk_scan_records / TIME_FOR_COMPARE_ROWID;
+    imerge_cost += rid_comp_cost;
+    trace_best_disjunct.add_member("cost_of_mapping_rowid_in_non_clustered_pk_scan")
+                       .add_double(rid_comp_cost);
   }
 
   /* Calculate cost(rowid_to_row_scan) */
-  imerge_cost += get_sweep_read_cost(param, non_cpk_scan_records);
+  {
+    double sweep_cost= get_sweep_read_cost(param, non_cpk_scan_records);
+    imerge_cost += sweep_cost;
+    trace_best_disjunct.add_member("cost_sort_rowid_and_read_disk")
+                       .add_double(sweep_cost);
+  }
   DBUG_PRINT("info",("index_merge cost with rowid-to-row scan: %g",
                      imerge_cost));
   if (imerge_cost > read_time || 
       !optimizer_flag(param->thd, OPTIMIZER_SWITCH_INDEX_MERGE_SORT_UNION))
   {
+    trace_best_disjunct.add_member("use_roworder_index_merge").add_bool(true);
+    trace_best_disjunct.add_member("cause").add_str("cost");
     goto build_ror_index_merge;
   }
 
@@ -5038,12 +5141,20 @@ TABLE_READ_PLAN *get_best_disjunct_quick(PARAM *param, SEL_IMERGE *imerge,
     param->imerge_cost_buff_size= unique_calc_buff_size;
   }
 
-  imerge_cost +=
-    Unique::get_use_cost(param->imerge_cost_buff, (uint)non_cpk_scan_records,
-                         param->table->file->ref_length,
-                         (size_t)param->thd->variables.sortbuff_size,
-                         TIME_FOR_COMPARE_ROWID,
-                         FALSE, NULL);
+  {
+    const double dup_removal_cost = Unique::get_use_cost(
+                           param->imerge_cost_buff, (uint)non_cpk_scan_records,
+                           param->table->file->ref_length,
+                           (size_t)param->thd->variables.sortbuff_size,
+                           TIME_FOR_COMPARE_ROWID,
+                           FALSE, NULL);
+    trace_best_disjunct.add_member("cost_duplicate_removal")
+                       .add_double(dup_removal_cost);
+    imerge_cost+= dup_removal_cost;
+    trace_best_disjunct.add_member("total_cost")
+                       .add_double(imerge_cost);
+  }
+
   DBUG_PRINT("info",("index_merge total cost: %g (wanted: less then %g)",
                      imerge_cost, read_time));
   if (imerge_cost < read_time)
@@ -5086,11 +5197,16 @@ skip_to_ror_scan:
   roru_total_records= 0;
   cur_roru_plan= roru_read_plans;
 
+  Json_writer_array trace_analyze_ror(writer, "analyzing_roworder_scans");
+
   /* Find 'best' ROR scan for each of trees in disjunction */
   for (ptree= imerge->trees, cur_child= range_scans;
        ptree != imerge->trees_next;
        ptree++, cur_child++, cur_roru_plan++)
   {
+    Json_writer_object trp_info(writer);
+    if (unlikely(trace->get_current_trace()))
+      (*cur_child)->trace_basic_info(param, &trp_info);
     /*
       Assume the best ROR scan is the one that has cheapest full-row-retrieval
       scan cost.
@@ -5126,7 +5242,7 @@ skip_to_ror_scan:
     roru_intersect_part *= (*cur_roru_plan)->records /
                            param->table->stat_records();
   }
-
+  trace_analyze_ror.end();
   /*
     rows to retrieve=
       SUM(rows_in_scan_i) - table_rows * PROD(rows_in_scan_i / table_rows).
@@ -5152,11 +5268,15 @@ skip_to_ror_scan:
 
   DBUG_PRINT("info", ("ROR-union: cost %g, %zu members",
                       roru_total_cost, n_child_scans));
+  trace_best_disjunct.add_member("index_roworder_union_cost")
+                     .add_double(roru_total_cost);
+  trace_best_disjunct.add_member("members").add_ll(n_child_scans);
   TRP_ROR_UNION* roru;
   if (roru_total_cost < read_time)
   {
     if ((roru= new (param->mem_root) TRP_ROR_UNION))
     {
+      trace_best_disjunct.add_member("chosen").add_bool(true);
       roru->first_ror= roru_read_plans;
       roru->last_ror= roru_read_plans + n_child_scans;
       roru->read_cost= roru_total_cost;
@@ -5164,7 +5284,9 @@ skip_to_ror_scan:
       DBUG_RETURN(roru);
     }
   }
-    DBUG_RETURN(imerge_trp);
+  else
+    trace_best_disjunct.add_member("chosen").add_bool(false);
+  DBUG_RETURN(imerge_trp);
 }
 
 
@@ -5425,6 +5547,15 @@ ha_rows get_table_cardinality_for_index_intersect(TABLE *table)
   } 
 }
 
+static
+void print_keyparts(Json_writer *writer, KEY *key, uint key_parts)
+{
+  KEY_PART_INFO *part= key->key_part;
+  Json_writer_array keyparts= Json_writer_array(writer, "keyparts");
+  for(uint i= 0; i < key_parts; i++, part++)
+    keyparts.get_value_context().add_str(part->field->field_name);
+}
+
   
 static
 ha_rows records_in_index_intersect_extension(PARTIAL_INDEX_INTERSECT_INFO *curr,
@@ -5477,8 +5608,10 @@ bool prepare_search_best_index_intersect(PARAM *param,
   INDEX_SCAN_INFO *cpk_scan= NULL;
   TABLE *table= param->table;
   uint n_index_scans= (uint)(tree->index_scans_end - tree->index_scans);
+  Opt_trace_context *const trace = &param->thd->opt_trace;
+  Json_writer* writer= trace->get_current_json();
 
-  if (!n_index_scans)
+  if (n_index_scans <= 1)
     return 1;
 
   bzero(init, sizeof(*init));
@@ -5494,9 +5627,6 @@ bool prepare_search_best_index_intersect(PARAM *param,
   common->cpk_scan= NULL;
   common->table_cardinality= 
     get_table_cardinality_for_index_intersect(table);
-
-  if (n_index_scans <= 1)
-    return TRUE;
 
   if (table->file->primary_key_is_clustered())
   {
@@ -5522,23 +5652,39 @@ bool prepare_search_best_index_intersect(PARAM *param,
   bzero(common->search_scans, sizeof(INDEX_SCAN_INFO *) * i);
 
   INDEX_SCAN_INFO **selected_index_scans= common->search_scans;
-    
+  Json_writer_array potential_idx_scans(writer, "potential_index_scans");
   for (i=0, index_scan= tree->index_scans; i < n_index_scans; i++, index_scan++)
   {
+    Json_writer_object idx_scan(writer);
     uint used_key_parts= (*index_scan)->used_key_parts;
     KEY *key_info= (*index_scan)->key_info;
+    idx_scan.add_member("index").add_str(key_info->name);
 
     if (*index_scan == cpk_scan)
+    {
+      idx_scan.add_member("chosen").add_bool("false");
+      idx_scan.add_member("cause").add_bool("clustered_index_used_for_filtering");
       continue;
+    }
     if (cpk_scan && cpk_scan->used_key_parts >= used_key_parts &&
         same_index_prefix(cpk_scan->key_info, key_info, used_key_parts))
+    {
+      idx_scan.add_member("chosen").add_bool("false");
+      idx_scan.add_member("cause")
+              .add_bool("clustered_index_used_for_filtering");
       continue;
+    }
 
     cost= table->file->keyread_time((*index_scan)->keynr,
                                     (*index_scan)->range_count,
                                     (*index_scan)->records);
+    idx_scan.add_member("cost").add_double(cost);
     if (cost >= cutoff_cost)
+    {
+      idx_scan.add_member("chosen").add_bool(false);
+      idx_scan.add_member("cause").add_str("cost");
       continue;
+    }
    
     for (scan_ptr= selected_index_scans; *scan_ptr ; scan_ptr++)
     {
@@ -5555,10 +5701,21 @@ bool prepare_search_best_index_intersect(PARAM *param,
     }
     if (!*scan_ptr || cost < (*scan_ptr)->index_read_cost)
     {
+      idx_scan.add_member("chosen").add_bool(true);
+      if (!*scan_ptr)
+        idx_scan.add_member("cause").add_str("first_occurence_of_index_prefix");
+      else
+        idx_scan.add_member("cause").add_str("better_cost_for_same_idx_prefix");
       *scan_ptr= *index_scan;
       (*scan_ptr)->index_read_cost= cost;
     }
-  } 
+    else
+    {
+      idx_scan.add_member("chosen").add_bool(false);
+      idx_scan.add_member("cause").add_str("cost");
+    }
+  }
+  potential_idx_scans.end();
 
   ha_rows records_in_scans= 0;
 
@@ -5568,6 +5725,7 @@ bool prepare_search_best_index_intersect(PARAM *param,
       return TRUE;
     records_in_scans+= (*scan_ptr)->records;
   }
+
   n_search_scans= i;
 
   if (cpk_scan && create_fields_bitmap(param, &cpk_scan->used_fields))
@@ -5597,6 +5755,7 @@ bool prepare_search_best_index_intersect(PARAM *param,
   my_qsort(selected_index_scans, n_search_scans, sizeof(INDEX_SCAN_INFO *),
            (qsort_cmp) cmp_intersect_index_scan);
 
+  Json_writer_array selected_idx_scans(writer, "selected_index_scans");
   if (cpk_scan)
   {
     PARTIAL_INDEX_INTERSECT_INFO curr;
@@ -5609,16 +5768,30 @@ bool prepare_search_best_index_intersect(PARAM *param,
     curr.length= 1;
     for (scan_ptr=selected_index_scans; *scan_ptr; scan_ptr++)
     {
+      KEY *key_info= (*scan_ptr)->key_info;
       ha_rows scan_records= (*scan_ptr)->records;
       ha_rows records= records_in_index_intersect_extension(&curr, *scan_ptr);
       (*scan_ptr)->filtered_out= records >= scan_records ?
-                                   0 : scan_records-records; 
+                                   0 : scan_records-records;
+      Json_writer_object selected_idx(writer);
+      selected_idx.add_member("index").add_str(key_info->name);
+      print_keyparts(writer, key_info, (*scan_ptr)->used_key_parts);
+      selected_idx.add_member("records").add_ll((*scan_ptr)->records);
+      selected_idx.add_member("filtered_records").add_ll((*scan_ptr)->filtered_out);
     }
   } 
   else
   {
     for (scan_ptr=selected_index_scans; *scan_ptr; scan_ptr++)
+    {
+      KEY *key_info= (*scan_ptr)->key_info;
       (*scan_ptr)->filtered_out= 0;
+      Json_writer_object selected_idx(writer);
+      selected_idx.add_member("index").add_str(key_info->name);
+      print_keyparts(writer, key_info, (*scan_ptr)->used_key_parts);
+      selected_idx.add_member("records").add_ll((*scan_ptr)->records);
+      selected_idx.add_member("filtered_records").add_ll(0);
+    }
   }
 
   return FALSE;
@@ -6081,7 +6254,7 @@ TRP_INDEX_INTERSECT *get_best_index_intersect(PARAM *param, SEL_TREE *tree,
   
   DBUG_ENTER("get_best_index_intersect");
 
-  Json_writer_object trace_idx_interect(writer, "analyzing_roworder_intersect");
+  Json_writer_object trace_idx_interect(writer, "analyzing_sort_intersect");
 
   if (prepare_search_best_index_intersect(param, tree, &common, &init,
                                           read_time))
@@ -6144,11 +6317,18 @@ TRP_INDEX_INTERSECT *get_best_index_intersect(PARAM *param, SEL_TREE *tree,
       
   if ((intersect_trp= new (param->mem_root)TRP_INDEX_INTERSECT))
   {
+
     intersect_trp->read_cost= common.best_cost;
     intersect_trp->records= common.best_records;
     intersect_trp->range_scans= range_scans;
     intersect_trp->range_scans_end= cur_range;
     intersect_trp->filtered_scans= common.filtered_scans;
+    trace_idx_interect.add_member("rows")
+                      .add_ll(intersect_trp->records);
+    trace_idx_interect.add_member("cost")
+                      .add_double(intersect_trp->read_cost);
+    trace_idx_interect.add_member("chosen")
+                      .add_bool(true);
   }
   DBUG_RETURN(intersect_trp);
 }
@@ -6157,6 +6337,48 @@ TRP_INDEX_INTERSECT *get_best_index_intersect(PARAM *param, SEL_TREE *tree,
 typedef struct st_ror_scan_info : INDEX_SCAN_INFO
 { 
 } ROR_SCAN_INFO;
+
+void TRP_ROR_INTERSECT::trace_basic_info(const PARAM *param,
+                                         Json_writer_object *trace_object) const
+{
+  trace_object->add_member("type").add_str("index_roworder_intersect");
+  trace_object->add_member("rows").add_ll(records);
+  trace_object->add_member("cost").add_double(read_cost);
+  trace_object->add_member("covering").add_bool(is_covering);
+  trace_object->add_member("clustered_pk_scan").add_bool(cpk_scan != NULL);
+
+  Opt_trace_context *const trace = &param->thd->opt_trace;
+  Json_writer* writer= trace->get_current_json();
+  Json_writer_array ota(writer, "intersect_of");
+  for (ROR_SCAN_INFO **cur_scan = first_scan; cur_scan != last_scan;
+                                                         cur_scan++)
+  {
+    const KEY &cur_key = param->table->key_info[(*cur_scan)->keynr];
+    const KEY_PART_INFO *key_part = cur_key.key_part;
+
+    Json_writer_object trace_isect_idx(writer);
+    trace_isect_idx.add_member("type").add_str("range_scan");
+    trace_isect_idx.add_member("index").add_str(cur_key.name);
+    trace_isect_idx.add_member("rows").add_ll((*cur_scan)->records);
+
+    Json_writer_array trace_range(writer, "ranges");
+    for (const SEL_ARG *current = (*cur_scan)->sel_arg->first(); current;
+                                                 current = current->next)
+    {
+      String range_info;
+      range_info.set_charset(system_charset_info);
+      for (const SEL_ARG *part = current; part;
+           part = part->next_key_part ? part->next_key_part : nullptr)
+      {
+        const KEY_PART_INFO *cur_key_part = key_part + part->part;
+        append_range(&range_info, cur_key_part, part->min_value,
+                     part->max_value, part->min_flag | part->max_flag);
+      }
+      trace_range.get_value_context()
+                 .add_str(range_info.ptr(), range_info.length());
+    }
+  }
+}
 
 
 /*

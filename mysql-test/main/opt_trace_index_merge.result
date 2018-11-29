@@ -1,0 +1,633 @@
+DROP TABLE IF EXISTS t1,t2,t3,t4;
+DROP DATABASE IF EXISTS world;
+set names utf8;
+CREATE DATABASE world;
+use world;
+CREATE TABLE Country (
+Code char(3) NOT NULL default '',
+Name char(52) NOT NULL default '',
+SurfaceArea float(10,2) NOT NULL default '0.00',
+Population int(11) NOT NULL default '0',
+Capital int(11) default NULL,
+PRIMARY KEY  (Code),
+UNIQUE INDEX (Name)
+);
+CREATE TABLE City (
+ID int(11) NOT NULL auto_increment,
+Name char(35) NOT NULL default '',
+Country char(3) NOT NULL default '',
+Population int(11) NOT NULL default '0',
+PRIMARY KEY  (ID),
+INDEX (Population),
+INDEX (Country) 
+);
+CREATE TABLE CountryLanguage (
+Country char(3) NOT NULL default '',
+Language char(30) NOT NULL default '',
+Percentage float(3,1) NOT NULL default '0.0',
+PRIMARY KEY  (Country, Language),
+INDEX (Percentage)
+);
+SELECT COUNT(*) FROM Country;
+COUNT(*)
+239
+SELECT COUNT(*) FROM City;
+COUNT(*)
+4079
+SELECT COUNT(*) FROM CountryLanguage;
+COUNT(*)
+984
+CREATE INDEX Name ON City(Name);
+SET SESSION optimizer_switch='index_merge_sort_intersection=on';
+SELECT COUNT(*) FROM City;
+COUNT(*)
+4079
+set optimizer_trace="enabled=on,one_line=off";
+# using sort_intersect
+EXPLAIN
+SELECT * FROM City WHERE
+Name LIKE 'C%' AND Population > 1000000;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	City	index_merge	Population,Name	Name,Population	35,4	NULL	9	Using sort_intersect(Name,Population); Using where
+select * from information_schema.OPTIMIZER_TRACE;
+QUERY	TRACE	MISSING_BYTES_BEYOND_MAX_MEM_SIZE	INSUFFICIENT_PRIVILEGES
+EXPLAIN
+SELECT * FROM City WHERE
+Name LIKE 'C%' AND Population > 1000000	{
+  "steps": [
+    {
+      "join_preparation": {
+        "select_id": 1,
+        "steps": [
+          {
+            "expanded_query": "select `city`.`ID` AS `ID`,`city`.`Name` AS `Name`,`city`.`Country` AS `Country`,`city`.`Population` AS `Population` from `city` where `city`.`Name` like 'C%' and `city`.`Population` > 1000000"
+          }
+        ]
+      }
+    },
+    {
+      "join_optimization": {
+        "select_id": 1,
+        "steps": [
+          {
+            "condition_processing": {
+              "condition": "WHERE",
+              "original_condition": "city.`Name` like 'C%' and city.Population > 1000000",
+              "steps": [
+                {
+                  "transformation": "equality_propagation",
+                  "resulting_condition": "city.`Name` like 'C%' and city.Population > 1000000"
+                },
+                {
+                  "transformation": "constant_propagation",
+                  "resulting_condition": "city.`Name` like 'C%' and city.Population > 1000000"
+                },
+                {
+                  "transformation": "trivial_condition_removal",
+                  "resulting_condition": "city.`Name` like 'C%' and city.Population > 1000000"
+                }
+              ]
+            }
+          },
+          {
+            "table_dependencies": [
+              {
+                "table": "city",
+                "row_may_be_null": false,
+                "map_bit": 0,
+                "depends_on_map_bits": []
+              }
+            ]
+          },
+          {
+            "ref_optimizer_key_uses": []
+          },
+          "rows_estimation": [
+            {
+              "rows_estimation": [
+                {
+                  "table": "city",
+                  "range_analysis": {
+                    "table_scan": {
+                      "rows": 4079,
+                      "cost": 866
+                    },
+                    "potential_range_indexes": [
+                      {
+                        "index": "PRIMARY",
+                        "usable": false,
+                        "cause": "not_applicable"
+                      },
+                      {
+                        "index": "Population",
+                        "usable": true,
+                        "key_parts": ["Population"]
+                      },
+                      {
+                        "index": "Country",
+                        "usable": false,
+                        "cause": "not_applicable"
+                      },
+                      {
+                        "index": "Name",
+                        "usable": true,
+                        "key_parts": ["Name"]
+                      }
+                    ],
+                    "setup_range_conditions": [],
+                    "group_index_range": {
+                      "chosen": false,
+                      "cause": "no_group_by_or_distinct"
+                    },
+                    "analyzing_range_alternatives": {
+                      "range_scan_alternatives": [
+                        {
+                          "index": "Population",
+                          "ranges": ["1000000 < Population"],
+                          "rowid_ordered": false,
+                          "using_mrr": false,
+                          "index_only": false,
+                          "rows": 238,
+                          "cost": 286.61,
+                          "chosen": true
+                        },
+                        {
+                          "index": "Name",
+                          "ranges": ["C"],
+                          "rowid_ordered": false,
+                          "using_mrr": false,
+                          "index_only": false,
+                          "rows": 161,
+                          "cost": 194.21,
+                          "chosen": true
+                        }
+                      ],
+                      "analyzing_roworder_intersect": {
+                        "cause": "too_few_roworder_scans"
+                      },
+                      "analyzing_sort_intersect": {
+                        "potential_index_scans": [
+                          {
+                            "index": "Population",
+                            "cost": 5.9847,
+                            "chosen": true,
+                            "cause": "first_occurence_of_index_prefix"
+                          },
+                          {
+                            "index": "Name",
+                            "cost": 14.13,
+                            "chosen": true,
+                            "cause": "first_occurence_of_index_prefix"
+                          }
+                        ],
+                        "selected_index_scans": [
+                          {
+                            "index": "Name",
+                            "keyparts": ["Name"],
+                            "records": 161,
+                            "filtered_records": 0
+                          },
+                          {
+                            "index": "Population",
+                            "keyparts": ["Population"],
+                            "records": 238,
+                            "filtered_records": 0
+                          }
+                        ],
+                        "rows": 9,
+                        "cost": 34.926,
+                        "chosen": true
+                      },
+                      "analyzing_index_merge_union": []
+                    },
+                    "chosen_range_access_summary": {
+                      "range_access_plan": {
+                        "type": "index_sort_intersect",
+                        "index_sort_intersect_of": [
+                          {
+                            "type": "range_scan",
+                            "index": "Name",
+                            "rows": 161,
+                            "ranges": ["C"]
+                          },
+                          {
+                            "type": "range_scan",
+                            "index": "Population",
+                            "rows": 238,
+                            "ranges": ["1000000 < Population"]
+                          }
+                        ]
+                      },
+                      "rows_for_plan": 9,
+                      "cost_for_plan": 34.926,
+                      "chosen": true
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "join_execution": {
+        "select_id": 1,
+        "steps": []
+      }
+    }
+  ]
+}	0	0
+# using sort_union
+EXPLAIN
+SELECT * FROM City WHERE
+Name LIKE 'C%' OR Population > 1000000;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	City	index_merge	Population,Name	Name,Population	35,4	NULL	399	Using sort_union(Name,Population); Using where
+select * from information_schema.OPTIMIZER_TRACE;
+QUERY	TRACE	MISSING_BYTES_BEYOND_MAX_MEM_SIZE	INSUFFICIENT_PRIVILEGES
+EXPLAIN
+SELECT * FROM City WHERE
+Name LIKE 'C%' OR Population > 1000000	{
+  "steps": [
+    {
+      "join_preparation": {
+        "select_id": 1,
+        "steps": [
+          {
+            "expanded_query": "select `city`.`ID` AS `ID`,`city`.`Name` AS `Name`,`city`.`Country` AS `Country`,`city`.`Population` AS `Population` from `city` where `city`.`Name` like 'C%' or `city`.`Population` > 1000000"
+          }
+        ]
+      }
+    },
+    {
+      "join_optimization": {
+        "select_id": 1,
+        "steps": [
+          {
+            "condition_processing": {
+              "condition": "WHERE",
+              "original_condition": "city.`Name` like 'C%' or city.Population > 1000000",
+              "steps": [
+                {
+                  "transformation": "equality_propagation",
+                  "resulting_condition": "city.`Name` like 'C%' or city.Population > 1000000"
+                },
+                {
+                  "transformation": "constant_propagation",
+                  "resulting_condition": "city.`Name` like 'C%' or city.Population > 1000000"
+                },
+                {
+                  "transformation": "trivial_condition_removal",
+                  "resulting_condition": "city.`Name` like 'C%' or city.Population > 1000000"
+                }
+              ]
+            }
+          },
+          {
+            "table_dependencies": [
+              {
+                "table": "city",
+                "row_may_be_null": false,
+                "map_bit": 0,
+                "depends_on_map_bits": []
+              }
+            ]
+          },
+          {
+            "ref_optimizer_key_uses": []
+          },
+          "rows_estimation": [
+            {
+              "rows_estimation": [
+                {
+                  "table": "city",
+                  "range_analysis": {
+                    "table_scan": {
+                      "rows": 4079,
+                      "cost": 866
+                    },
+                    "potential_range_indexes": [
+                      {
+                        "index": "PRIMARY",
+                        "usable": false,
+                        "cause": "not_applicable"
+                      },
+                      {
+                        "index": "Population",
+                        "usable": true,
+                        "key_parts": ["Population"]
+                      },
+                      {
+                        "index": "Country",
+                        "usable": false,
+                        "cause": "not_applicable"
+                      },
+                      {
+                        "index": "Name",
+                        "usable": true,
+                        "key_parts": ["Name"]
+                      }
+                    ],
+                    "setup_range_conditions": [],
+                    "group_index_range": {
+                      "chosen": false,
+                      "cause": "no_group_by_or_distinct"
+                    },
+                    "analyzing_range_alternatives": {
+                      "range_scan_alternatives": [],
+                      "analyzing_roworder_intersect": {
+                        "cause": "too_few_roworder_scans"
+                      },
+                      "analyzing_sort_intersect": {},
+                      "analyzing_index_merge_union": [
+                        {
+                          "indexes_to_merge": [
+                            {
+                              "range_scan_alternatives": [
+                                {
+                                  "index": "Name",
+                                  "ranges": ["C"],
+                                  "rowid_ordered": false,
+                                  "using_mrr": false,
+                                  "index_only": true,
+                                  "rows": 161,
+                                  "cost": 46.34,
+                                  "chosen": true
+                                }
+                              ],
+                              "index_to_merge": "Name",
+                              "cumulated_cost": 46.34
+                            },
+                            {
+                              "range_scan_alternatives": [
+                                {
+                                  "index": "Population",
+                                  "ranges": ["1000000 < Population"],
+                                  "rowid_ordered": false,
+                                  "using_mrr": false,
+                                  "index_only": true,
+                                  "rows": 238,
+                                  "cost": 53.595,
+                                  "chosen": true
+                                }
+                              ],
+                              "index_to_merge": "Population",
+                              "cumulated_cost": 99.935
+                            }
+                          ],
+                          "cost_of_reading_ranges": 99.935,
+                          "cost_sort_rowid_and_read_disk": 42.329,
+                          "cost_duplicate_removal": 11.544,
+                          "total_cost": 153.81
+                        }
+                      ]
+                    },
+                    "chosen_range_access_summary": {
+                      "range_access_plan": {
+                        "type": "index_merge",
+                        "index_merge_of": [
+                          {
+                            "type": "range_scan",
+                            "index": "Name",
+                            "rows": 161,
+                            "ranges": ["C"]
+                          },
+                          {
+                            "type": "range_scan",
+                            "index": "Population",
+                            "rows": 238,
+                            "ranges": ["1000000 < Population"]
+                          }
+                        ]
+                      },
+                      "rows_for_plan": 399,
+                      "cost_for_plan": 153.81,
+                      "chosen": true
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "join_execution": {
+        "select_id": 1,
+        "steps": []
+      }
+    }
+  ]
+}	0	0
+drop database world;
+# using union
+use test;
+create table t0 (a int);
+insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 (a int, b int, c int, filler char(100),
+key(a), key(b), key(c));
+insert into t1 select
+A.a * B.a*10 + C.a*100,
+A.a * B.a*10 + C.a*100,
+A.a,
+'filler'
+from t0 A, t0 B, t0 C;
+This should use union:
+explain select * from t1 where a=1 or b=1;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	index_merge	a,b	a,b	5,5	NULL	2	Using union(a,b); Using where
+select * from information_schema.OPTIMIZER_TRACE;
+QUERY	TRACE	MISSING_BYTES_BEYOND_MAX_MEM_SIZE	INSUFFICIENT_PRIVILEGES
+explain select * from t1 where a=1 or b=1	{
+  "steps": [
+    {
+      "join_preparation": {
+        "select_id": 1,
+        "steps": [
+          {
+            "expanded_query": "select `t1`.`a` AS `a`,`t1`.`b` AS `b`,`t1`.`c` AS `c`,`t1`.`filler` AS `filler` from `t1` where `t1`.`a` = 1 or `t1`.`b` = 1"
+          }
+        ]
+      }
+    },
+    {
+      "join_optimization": {
+        "select_id": 1,
+        "steps": [
+          {
+            "condition_processing": {
+              "condition": "WHERE",
+              "original_condition": "t1.a = 1 or t1.b = 1",
+              "steps": [
+                {
+                  "transformation": "equality_propagation",
+                  "resulting_condition": "multiple equal(1, t1.a) or multiple equal(1, t1.b)"
+                },
+                {
+                  "transformation": "constant_propagation",
+                  "resulting_condition": "multiple equal(1, t1.a) or multiple equal(1, t1.b)"
+                },
+                {
+                  "transformation": "trivial_condition_removal",
+                  "resulting_condition": "multiple equal(1, t1.a) or multiple equal(1, t1.b)"
+                }
+              ]
+            }
+          },
+          {
+            "table_dependencies": [
+              {
+                "table": "t1",
+                "row_may_be_null": false,
+                "map_bit": 0,
+                "depends_on_map_bits": []
+              }
+            ]
+          },
+          {
+            "ref_optimizer_key_uses": []
+          },
+          "rows_estimation": [
+            {
+              "rows_estimation": [
+                {
+                  "table": "t1",
+                  "range_analysis": {
+                    "table_scan": {
+                      "rows": 1000,
+                      "cost": 231
+                    },
+                    "potential_range_indexes": [
+                      {
+                        "index": "a",
+                        "usable": true,
+                        "key_parts": ["a"]
+                      },
+                      {
+                        "index": "b",
+                        "usable": true,
+                        "key_parts": ["b"]
+                      },
+                      {
+                        "index": "c",
+                        "usable": false,
+                        "cause": "not_applicable"
+                      }
+                    ],
+                    "setup_range_conditions": [],
+                    "group_index_range": {
+                      "chosen": false,
+                      "cause": "no_group_by_or_distinct"
+                    },
+                    "analyzing_range_alternatives": {
+                      "range_scan_alternatives": [],
+                      "analyzing_roworder_intersect": {
+                        "cause": "too_few_roworder_scans"
+                      },
+                      "analyzing_sort_intersect": {},
+                      "analyzing_index_merge_union": [
+                        {
+                          "indexes_to_merge": [
+                            {
+                              "range_scan_alternatives": [
+                                {
+                                  "index": "a",
+                                  "ranges": ["1 <= a <= 1"],
+                                  "rowid_ordered": true,
+                                  "using_mrr": false,
+                                  "index_only": true,
+                                  "rows": 1,
+                                  "cost": 2.21,
+                                  "chosen": true
+                                }
+                              ],
+                              "index_to_merge": "a",
+                              "cumulated_cost": 2.21
+                            },
+                            {
+                              "range_scan_alternatives": [
+                                {
+                                  "index": "b",
+                                  "ranges": ["1 <= b <= 1"],
+                                  "rowid_ordered": true,
+                                  "using_mrr": false,
+                                  "index_only": true,
+                                  "rows": 1,
+                                  "cost": 2.21,
+                                  "chosen": true
+                                }
+                              ],
+                              "index_to_merge": "b",
+                              "cumulated_cost": 4.42
+                            }
+                          ],
+                          "cost_of_reading_ranges": 4.42,
+                          "use_roworder_union": true,
+                          "cause": "always_cheaper_than_non_roworder_retrieval",
+                          "analyzing_roworder_scans": [
+                            {
+                              "type": "range_scan",
+                              "index": "a",
+                              "rows": 1,
+                              "ranges": ["1 <= a <= 1"],
+                              "analyzing_roworder_intersect": {
+                                "cause": "too_few_roworder_scans"
+                              }
+                            },
+                            {
+                              "type": "range_scan",
+                              "index": "b",
+                              "rows": 1,
+                              "ranges": ["1 <= b <= 1"],
+                              "analyzing_roworder_intersect": {
+                                "cause": "too_few_roworder_scans"
+                              }
+                            }
+                          ],
+                          "index_roworder_union_cost": 6.2137,
+                          "members": 2,
+                          "chosen": true
+                        }
+                      ]
+                    },
+                    "chosen_range_access_summary": {
+                      "range_access_plan": {
+                        "type": "index_roworder_union",
+                        "union_of": [
+                          {
+                            "type": "range_scan",
+                            "index": "a",
+                            "rows": 1,
+                            "ranges": ["1 <= a <= 1"]
+                          },
+                          {
+                            "type": "range_scan",
+                            "index": "b",
+                            "rows": 1,
+                            "ranges": ["1 <= b <= 1"]
+                          }
+                        ]
+                      },
+                      "rows_for_plan": 2,
+                      "cost_for_plan": 6.2137,
+                      "chosen": true
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "join_execution": {
+        "select_id": 1,
+        "steps": []
+      }
+    }
+  ]
+}	0	0
+drop table t0,t1;
