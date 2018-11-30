@@ -491,7 +491,7 @@ static my_bool tc_collect_used_shares(TDC_element *element,
     if (do_flush)
     {
       element->ref_count++;                       // Protect against delete
-      if (push_dynamic(shares,(uchar*) &element->share))
+      if (push_dynamic(shares, (uchar*) &element->share))
         result= TRUE;
     }
   }

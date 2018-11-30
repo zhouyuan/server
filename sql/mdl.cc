@@ -476,8 +476,6 @@ public:
        Insert delayed threads may hold DML or TRANS_DML lock.
        We need to kill such threads in order to get lock for FTWRL statements.
        We do this by calling code outside of MDL.
-       Notify threads holding scoped IX locks which conflict with a pending
-       S lock.
     */
     virtual bool conflicting_locks(const MDL_ticket *ticket) const
     {
@@ -1504,7 +1502,7 @@ MDL_lock::MDL_scoped_lock::m_waiting_incompatible[MDL_TYPE_END]=
 
      Request  |  Granted requests for lock         |
       type    | S  SH  SR  SW  SU  SRO SNW SNRW X  |
-    ----------+-------------------------------------+
+    ----------+------------------------------------+
     S         | +   +   +   +   +   +   +   +   -  |
     SH        | +   +   +   +   +   +   +   +   -  |
     SR        | +   +   +   +   +   +   +   -   -  |
@@ -1524,7 +1522,7 @@ MDL_lock::MDL_scoped_lock::m_waiting_incompatible[MDL_TYPE_END]=
 
      Request  |  Pending requests for lock        |
       type    | S  SH  SR  SW  SU  SRO SNW SNRW X |
-    ----------+------------------------------------+
+    ----------+-----------------------------------+
     S         | +   +   +   +   +   +   +   +   - |
     SH        | +   +   +   +   +   +   +   +   + |
     SR        | +   +   +   +   +   +   +   -   - |
@@ -2938,7 +2936,7 @@ void MDL_ticket::downgrade_lock(enum_mdl_type type)
   mysql_prlock_wrlock(&m_lock->m_rwlock);
   /*
     To update state of MDL_lock object correctly we need to temporarily
-    exclude ticket from the granted gqueue and then include it back.
+    exclude ticket from the granted queue and then include it back.
   */
   m_lock->m_granted.remove_ticket(this);
   m_type= type;
