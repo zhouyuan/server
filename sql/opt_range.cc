@@ -7523,10 +7523,11 @@ QUICK_SELECT_I *TRP_ROR_INTERSECT::make_quick(PARAM *param,
                                              "creating ROR-intersect",
                                              first_scan, last_scan););
     alloc= parent_alloc? parent_alloc: &quick_intrsect->alloc;
-    for (; first_scan != last_scan;++first_scan)
+    for (ROR_SCAN_INFO **curr_scan= first_scan; curr_scan != last_scan;
+                                                          ++curr_scan)
     {
-      if (!(quick= get_quick_select(param, (*first_scan)->idx,
-                                    (*first_scan)->sel_arg,
+      if (!(quick= get_quick_select(param, (*curr_scan)->idx,
+                                    (*curr_scan)->sel_arg,
                                     HA_MRR_USE_DEFAULT_IMPL | HA_MRR_SORTED,
                                     0, alloc)) ||
           quick_intrsect->push_quick_back(alloc, quick))

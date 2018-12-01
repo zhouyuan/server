@@ -173,7 +173,7 @@ void Json_writer::add_null()
 
 void Json_writer::add_unquoted_str(const char* str)
 {
-  if (fmt_helper.on_add_str(str))
+  if (fmt_helper.on_add_str(str, 0))
     return;
 
   if (!element_started)
@@ -186,7 +186,7 @@ void Json_writer::add_unquoted_str(const char* str)
 
 void Json_writer::add_str(const char *str)
 {
-  if (fmt_helper.on_add_str(str))
+  if (fmt_helper.on_add_str(str, 0))
     return;
 
   if (!element_started)
@@ -200,7 +200,7 @@ void Json_writer::add_str(const char *str)
 
 void Json_writer::add_str(const char *str, size_t length)
 {
-  if (fmt_helper.on_add_str(str))
+  if (fmt_helper.on_add_str(str, length))
     return;
 
   if (!element_started)
@@ -323,11 +323,11 @@ void Single_line_formatting_helper::on_start_object()
 }
 
 
-bool Single_line_formatting_helper::on_add_str(const char *str)
+bool Single_line_formatting_helper::on_add_str(const char *str, size_t length)
 {
   if (state == IN_ARRAY)
   {
-    size_t len= strlen(str);
+    size_t len= length ? length : strlen(str);
 
     // New length will be:
     //  "$string", 

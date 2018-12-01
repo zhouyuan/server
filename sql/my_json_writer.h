@@ -89,7 +89,7 @@ public:
   void on_start_object();
   // on_end_object() is not needed.
    
-  bool on_add_str(const char *str);
+  bool on_add_str(const char *str, size_t length);
 
   void flush_on_one_line();
   void disable_and_flush();
