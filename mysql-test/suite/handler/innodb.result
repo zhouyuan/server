@@ -872,7 +872,7 @@ b	a
 NULL	5
 handler t1 close;
 #
-# FLUSH TABLES WITH READ LOCK does not loose position
+# FLUSH TABLES WITH READ LOCK behaves like FLUSH TABLE.
 # 
 handler t1 open;
 handler t1 read a prev;
@@ -881,7 +881,7 @@ NULL	5
 flush tables with read lock;
 handler t1 read a prev;
 b	a
-NULL	4
+NULL	5
 handler t1 close;
 unlock tables;
 #

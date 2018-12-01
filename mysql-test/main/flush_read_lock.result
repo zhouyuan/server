@@ -1675,3 +1675,31 @@ disconnect con1;
 disconnect con2;
 disconnect con3;
 set global sql_mode=default;
+#
+# Deadlock between FTWRL under open handler and DDL/LOCK TABLES
+#
+CREATE TABLE t1(a INT);
+HANDLER t1 OPEN;
+#
+connect  con1,localhost,root,,;
+SET DEBUG_SYNC= 'mdl_acquire_lock_wait SIGNAL ready';
+LOCK TABLE t1 WRITE;
+#
+# we need to do it in a separate connection,
+# because SET DEBUG_SYNC call open_tables()/mysql_ha_flush() :(
+connect  con2,localhost,root,,;
+SET DEBUG_SYNC= 'now WAIT_FOR ready';
+disconnect con2;
+#
+connection default;
+FLUSH TABLES WITH READ LOCK;
+#
+connection con1;
+UNLOCK TABLES;
+disconnect con1;
+#
+connection default;
+UNLOCK TABLES;
+HANDLER t1 CLOSE;
+DROP TABLE t1;
+SET DEBUG_SYNC= 'RESET';
