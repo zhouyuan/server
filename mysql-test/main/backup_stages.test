@@ -1,3 +1,6 @@
+--source include/have_innodb.inc
+--source include/have_metadata_lock_info.inc
+
 --echo #
 --echo # testing syntax for BACKUP STAGE
 --echo #
@@ -43,7 +46,7 @@ backup stage end;
 set SQL_MODE=default;
 
 --echo #
---echo # Check lock tables
+--echo # Check BACKUP STAGE under lock tables
 --echo #
 create table t1 (a int);
 lock table t1 write;
@@ -51,15 +54,60 @@ lock table t1 write;
 backup stage start;
 --error ER_BACKUP_NOT_RUNNING
 backup stage end;
-drop table t1;
+unlock tables;
+
+lock table t1 read;
+--error ER_LOCK_OR_ACTIVE_TRANSACTION
+backup stage start;
+--error ER_BACKUP_NOT_RUNNING
+backup stage end;
+unlock tables;
+
 
 --echo #
---echo # Check setting readonly
+--echo # Check lock tables under BACKUP STAGE
+--echo #
+backup stage start;
+unlock tables;
+select lock_mode from information_schema.metadata_lock_info;
+
+--error ER_BACKUP_LOCK_IS_ACTIVE
+lock table t1 write;
+
+--echo # CHECK: must not be allowed
+lock table t1 read;
+--echo # unlock tables crashes
+# unlock tables;
+backup stage end;
+unlock tables;
+drop table t1;
+
+
+--echo #
+--echo # Check setting readonly under BACKUP STAGE
 --echo #
 backup stage start;
 --error ER_LOCK_OR_ACTIVE_TRANSACTION
 set @@global.read_only=1;
 backup stage end;
+
+--echo # also make sure going back from read-only mode is not allowed
+set @@global.read_only=1;
+backup stage start;
+--error ER_LOCK_OR_ACTIVE_TRANSACTION
+set @@global.read_only=0;
+backup stage end;
+set @@global.read_only=0;
+
+--echo #
+--echo # Check BACKUP STAGE under read_only
+--echo #
+--echo # CHECK: if we allow BACKUP STAGE under read_only, allow it under FTWRL?
+set @@global.read_only=1;
+backup stage start;
+backup stage end;
+set @@global.read_only=0;
+
 
 --echo #
 --echo # Check that we can't create tables during backup
@@ -69,11 +117,57 @@ backup stage start;
 create table t1 (a int);
 backup stage end;
 
+--echo # also make sure we can't write to a table during backup
+create table t1(a INT);
+backup stage start;
+--error ER_BACKUP_LOCK_IS_ACTIVE
+insert into t1 values(1);
+--error ER_BACKUP_LOCK_IS_ACTIVE
+insert delayed into t1 values(1);
+--error ER_BACKUP_LOCK_IS_ACTIVE
+update t1 set a=1;
+--error ER_BACKUP_LOCK_IS_ACTIVE
+delete from t1;
+--error ER_BACKUP_LOCK_IS_ACTIVE
+truncate table t1;
+--error ER_BACKUP_LOCK_IS_ACTIVE
+drop table t1;
+backup stage end;
+drop table t1;
+
+
+--echo #
+--echo # CHECK: BACKUP STAGE must perform implicit commit
+--echo #
+create table t1(a int) engine=InnoDB;
+begin;
+insert into t1 values(1);
+select lock_mode from information_schema.metadata_lock_info;
+backup stage start;
+select lock_mode from information_schema.metadata_lock_info;
+backup stage block_commit;
+commit;
+backup stage end;
+
+--echo #
+--echo # CHECK: RO transaction under BACKUP STAGE is a potential deadlock
+--echo # OTOH we most probably allow them under FTWRL as well
+--echo #
+backup stage start;
+backup stage block_commit;
+begin;
+select * from t1;
+select lock_mode from information_schema.metadata_lock_info;
+backup stage end;
+
+drop table t1;
+
+
 --echo #
 --echo # Check TEMPORARY TABLES
 --echo #
 
-BACKUP STAGE START ;
+BACKUP STAGE START;
 BACKUP STAGE BLOCK_DDL;
 FLUSH TABLES;
 CREATE TEMPORARY TABLE tmp (col1 INT);

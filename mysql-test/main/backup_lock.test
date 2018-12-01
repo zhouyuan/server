@@ -28,8 +28,8 @@ connection con1;
 connection con2;
 backup stage start;
 backup stage flush;
---error ER_STATEMENT_TIMEOUT
-SET STATEMENT max_statement_time=1 FOR backup stage block_ddl;
+--error ER_LOCK_WAIT_TIMEOUT
+SET STATEMENT lock_wait_timeout=0 FOR backup stage block_ddl;
 SELECT LOCK_MODE, LOCK_TYPE, TABLE_SCHEMA, TABLE_NAME FROM information_schema.metadata_lock_info;
 --send backup stage block_ddl
 
@@ -39,8 +39,8 @@ let $wait_condition=
     where state = "Waiting for backup lock";
 --source include/wait_condition.inc
 commit;
---error ER_STATEMENT_TIMEOUT
-SET STATEMENT max_statement_time=1 FOR SELECT * FROM t1;
+--error ER_LOCK_WAIT_TIMEOUT
+SET STATEMENT lock_wait_timeout=0 FOR SELECT * FROM t1;
 --send SELECT * FROM t1
 connection con2;
 --reap # BLOCK_DDL
@@ -62,8 +62,8 @@ insert into t1 values (1);
 
 connection con1;
 # Waits on MDL
---error ER_STATEMENT_TIMEOUT
-SET STATEMENT max_statement_time=1 FOR DROP TABLE t1;
+--error ER_LOCK_WAIT_TIMEOUT
+SET STATEMENT lock_wait_timeout=0 FOR DROP TABLE t1;
 --send DROP TABLE t1
 
 connection con2;
@@ -73,11 +73,11 @@ let $wait_condition=
     select count(*) = 1 from information_schema.processlist
     where state = "Waiting for table metadata lock";
 --source include/wait_condition.inc
---error ER_STATEMENT_TIMEOUT
-SET STATEMENT max_statement_time=1 FOR SELECT * FROM t1;
+--error ER_LOCK_WAIT_TIMEOUT
+SET STATEMENT lock_wait_timeout=0 FOR SELECT * FROM t1;
 
---error ER_STATEMENT_TIMEOUT
-SET STATEMENT max_statement_time=1 FOR backup stage block_ddl;
+--error ER_LOCK_WAIT_TIMEOUT
+SET STATEMENT lock_wait_timeout=0 FOR backup stage block_ddl;
 SELECT LOCK_MODE, LOCK_TYPE, TABLE_SCHEMA, TABLE_NAME FROM information_schema.metadata_lock_info;
 backup stage end;
 select user,db,Info from information_schema.processlist where user <> "system user" order by Info;
@@ -104,7 +104,8 @@ let $wait_condition=
 --source include/wait_condition.inc
 connection con2;
 SELECT LOCK_MODE, LOCK_TYPE, TABLE_SCHEMA, TABLE_NAME FROM information_schema.metadata_lock_info;
-SET STATEMENT max_statement_time=1 FOR SELECT * FROM t1;
+--echo # CHECK: why setting lock_wait_timeout here, it succeeds anyway?
+SET STATEMENT lock_wait_timeout=0 FOR SELECT * FROM t1;
 connection default;
 backup stage end;
 connection con1;
@@ -122,8 +123,8 @@ insert into t1 values (1);
 
 connection con1;
 # Waits on MDL
---error ER_STATEMENT_TIMEOUT
-SET STATEMENT max_statement_time=1 FOR DROP TABLE t1;
+--error ER_LOCK_WAIT_TIMEOUT
+SET STATEMENT lock_wait_timeout=0 FOR DROP TABLE t1;
 --send DROP TABLE t1
 
 connection con2;
@@ -189,7 +190,7 @@ BACKUP STAGE END;
 --echo # Test BACKUP STAGES with lock timeouts
 --echo #
 
-SET GLOBAL lock_wait_timeout=1;
+SET GLOBAL lock_wait_timeout=0;
 CREATE TABLE t_permanent_innodb (col1 INT) ENGINE = InnoDB;
 CREATE TABLE t_permanent_myisam (col1 INT) ENGINE = MyISAM;
 INSERT INTO t_permanent_innodb SET col1 = 1;
@@ -207,7 +208,6 @@ BACKUP STAGE FLUSH;
 BACKUP STAGE BLOCK_DDL;
 BACKUP STAGE BLOCK_COMMIT;
 
-unlock tables;
 --connection con1
 UPDATE t_permanent_innodb SET col1 = 8;
 --error ER_LOCK_WAIT_TIMEOUT

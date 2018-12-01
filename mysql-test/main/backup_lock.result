@@ -15,8 +15,8 @@ alter table t1 add column (j int);
 connection con2;
 backup stage start;
 backup stage flush;
-SET STATEMENT max_statement_time=1 FOR backup stage block_ddl;
-ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+SET STATEMENT lock_wait_timeout=0 FOR backup stage block_ddl;
+ERROR HY000: Lock wait timeout exceeded; try restarting transaction
 SELECT LOCK_MODE, LOCK_TYPE, TABLE_SCHEMA, TABLE_NAME FROM information_schema.metadata_lock_info;
 LOCK_MODE	LOCK_TYPE	TABLE_SCHEMA	TABLE_NAME
 MDL_BACKUP_DDL	Backup lock		
@@ -27,8 +27,8 @@ MDL_INTENTION_EXCLUSIVE	Schema metadata lock	test
 backup stage block_ddl;
 connection default;
 commit;
-SET STATEMENT max_statement_time=1 FOR SELECT * FROM t1;
-ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+SET STATEMENT lock_wait_timeout=0 FOR SELECT * FROM t1;
+ERROR HY000: Lock wait timeout exceeded; try restarting transaction
 SELECT * FROM t1;
 connection con2;
 backup stage end;
@@ -44,16 +44,16 @@ create table t1 (a int) engine=innodb;
 start transaction;
 insert into t1 values (1);
 connection con1;
-SET STATEMENT max_statement_time=1 FOR DROP TABLE t1;
-ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+SET STATEMENT lock_wait_timeout=0 FOR DROP TABLE t1;
+ERROR HY000: Lock wait timeout exceeded; try restarting transaction
 DROP TABLE t1;
 connection con2;
 backup stage start;
 backup stage flush;
-SET STATEMENT max_statement_time=1 FOR SELECT * FROM t1;
-ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
-SET STATEMENT max_statement_time=1 FOR backup stage block_ddl;
-ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+SET STATEMENT lock_wait_timeout=0 FOR SELECT * FROM t1;
+ERROR HY000: Lock wait timeout exceeded; try restarting transaction
+SET STATEMENT lock_wait_timeout=0 FOR backup stage block_ddl;
+ERROR HY000: Lock wait timeout exceeded; try restarting transaction
 SELECT LOCK_MODE, LOCK_TYPE, TABLE_SCHEMA, TABLE_NAME FROM information_schema.metadata_lock_info;
 LOCK_MODE	LOCK_TYPE	TABLE_SCHEMA	TABLE_NAME
 MDL_BACKUP_DDL	Backup lock		
@@ -83,7 +83,8 @@ connection con2;
 SELECT LOCK_MODE, LOCK_TYPE, TABLE_SCHEMA, TABLE_NAME FROM information_schema.metadata_lock_info;
 LOCK_MODE	LOCK_TYPE	TABLE_SCHEMA	TABLE_NAME
 MDL_BACKUP_WAIT_DDL	Backup lock		
-SET STATEMENT max_statement_time=1 FOR SELECT * FROM t1;
+# CHECK: why setting lock_wait_timeout here, it succeeds anyway?
+SET STATEMENT lock_wait_timeout=0 FOR SELECT * FROM t1;
 a
 connection default;
 backup stage end;
@@ -96,8 +97,8 @@ create table t1 (a int) engine=innodb;
 start transaction;
 insert into t1 values (1);
 connection con1;
-SET STATEMENT max_statement_time=1 FOR DROP TABLE t1;
-ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+SET STATEMENT lock_wait_timeout=0 FOR DROP TABLE t1;
+ERROR HY000: Lock wait timeout exceeded; try restarting transaction
 DROP TABLE t1;
 connection con2;
 backup stage start;
@@ -142,7 +143,7 @@ BACKUP STAGE END;
 #
 # Test BACKUP STAGES with lock timeouts
 #
-SET GLOBAL lock_wait_timeout=1;
+SET GLOBAL lock_wait_timeout=0;
 CREATE TABLE t_permanent_innodb (col1 INT) ENGINE = InnoDB;
 CREATE TABLE t_permanent_myisam (col1 INT) ENGINE = MyISAM;
 INSERT INTO t_permanent_innodb SET col1 = 1;
@@ -156,7 +157,6 @@ BACKUP STAGE START;
 BACKUP STAGE FLUSH;
 BACKUP STAGE BLOCK_DDL;
 BACKUP STAGE BLOCK_COMMIT;
-unlock tables;
 connection con1;
 UPDATE t_permanent_innodb SET col1 = 8;
 UPDATE t_permanent_myisam SET col1 = 8;

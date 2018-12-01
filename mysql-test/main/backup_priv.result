@@ -7,6 +7,14 @@ GRANT CREATE, DROP ON *.* TO user2@localhost;
 connect con1, localhost, user1;
 BACKUP STAGE START;
 BACKUP STAGE END;
+# change_user must release backup lock
+BACKUP STAGE START;
+BACKUP STAGE FLUSH;
+SELECT lock_mode FROM information_schema.metadata_lock_info WHERE lock_type='Backup lock';
+lock_mode
+MDL_BACKUP_START
+SELECT lock_mode FROM information_schema.metadata_lock_info WHERE lock_type='Backup lock';
+lock_mode
 disconnect con1;
 connection default;
 connect con1, localhost, user2;
