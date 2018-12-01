@@ -1,0 +1,15 @@
+source include/have_ssl_communication.inc;
+source include/have_debug.inc;
+
+connect  ssl_con,localhost,root,,,,,SSL;
+SET debug_dbug='+d,simulate_bad_ssl_cert';
+error ER_UNKNOWN_ERROR;
+FLUSH SSL;
+SET debug_dbug='';
+# Check ssl connection still possible after FLUSH_SSL fails
+connect  ssl_con2,localhost,root,,,,,SSL;
+
+disconnect ssl_con2;
+disconnect ssl_con;
+connection default;
+

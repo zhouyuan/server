@@ -1,0 +1,24 @@
+source include/have_ssl_communication.inc;
+
+connect  ssl_con,localhost,root,,,,,SSL;
+SELECT VARIABLE_VALUE != '0' FROM INFORMATION_SCHEMA.GLOBAL_STATUS WHERE VARIABLE_NAME='SSL_ACCEPTS';
+FLUSH SSL;
+
+# Check if SSL_ACCEPTS was flushed (SSL_ACCEPTS = 0)
+SELECT VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_STATUS WHERE VARIABLE_NAME='SSL_ACCEPTS';
+
+CREATE USER u;
+connect  ssl_con2,localhost,u,,,,,SSL;
+
+# Check SSL_ACCEPTS increased to 1
+SELECT VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_STATUS WHERE VARIABLE_NAME='SSL_ACCEPTS';
+
+# Check that FLUSH SSL does not work for unprivileged user
+error ER_SPECIFIC_ACCESS_DENIED_ERROR;
+FLUSH SSL;
+
+disconnect ssl_con2;
+disconnect ssl_con;
+connection default;
+DROP USER u;
+

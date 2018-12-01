@@ -1,0 +1,9 @@
+connect  ssl_con,localhost,root,,,,,SSL;
+SET debug_dbug='+d,simulate_bad_ssl_cert';
+FLUSH SSL;
+ERROR HY000: Failed to refresh SSL, error: Unable to get certificate
+SET debug_dbug='';
+connect  ssl_con2,localhost,root,,,,,SSL;
+disconnect ssl_con2;
+disconnect ssl_con;
+connection default;
