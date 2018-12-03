@@ -4541,6 +4541,7 @@ code_name(int code)
 }
 #endif
 
+
 /**
    Macro to check that there is enough space to read from memory.
 
@@ -4763,6 +4764,29 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
       pos= (const uchar*) end;                         // Break loop
     }
   }
+
+#if !defined(MYSQL_CLIENT)
+  if (description_event->server_version_split.kind ==
+      Format_description_log_event::master_version_split::KIND_MYSQL)
+  {
+    // Handle MariaDB/MySQL incompatible sql_mode bits
+    sql_mode_t mysql_sql_mode= sql_mode;
+    sql_mode&= MODE_MASK_MYSQL_COMPATIBLE; // Unset MySQL specific bits
+
+    /*
+      sql_mode flags related to fraction second rounding/truncation
+      have opposite meaning in MySQL vs MariaDB.
+      MySQL:
+       - rounds fractional seconds by default
+       - truncates if TIME_TRUNCATE_FRACTIONAL is set
+      MariaDB:
+       - truncates fractional seconds by default
+       - rounds if TIME_ROUND_FRACTIONAL is set
+    */
+    if (!(mysql_sql_mode & MODE_MYSQL80_TIME_TRUNCATE_FRACTIONAL))
+      sql_mode|= MODE_TIME_ROUND_FRACTIONAL;
+  }
+#endif
 
   /**
     Layout for the data buffer is as follows
